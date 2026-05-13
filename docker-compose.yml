@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-deepfake-system-v3-secret-2026}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./models:/app/models
+      - ./reports:/app/reports
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  ui:
+    build: .
+    command: python demo_ui.py
+    ports:
+      - "7860:7860"
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          memory: 4G

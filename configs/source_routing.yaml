@@ -1,0 +1,55 @@
+# Kaynak Yönlendirme Yapılandırması — DeepFake Detection System
+# Her veri kaynağının hangi sınıfları aktif ettiğini tanımlar
+
+source_routing:
+  # FaceForensics++ — Dijital manipülasyon tespiti
+  # Kaynak: Fotoğraf yükleme / Browser Extension
+  ff++:
+    input_type: upload             # browser_upload, file_upload
+    active_classes: [REAL, FAKE]   # Sadece REAL ve FAKE aktif
+    branch: digital                # Dijital deepfake dalı
+    description: "Sisteme yüklenen veya browser extension ile internetten bulunan görseller"
+    endpoints:
+      - /predict/upload
+      - /predict/image
+      - /predict/image/async
+
+  # CASIA-FASD — Fiziksel saldırı tespiti
+  # Kaynak: Webcam / Canlı kamera akışı
+  casia-fasd:
+    input_type: webcam             # webcam, camera_stream
+    active_classes: [REAL, SPOOF]  # Sadece REAL ve SPOOF aktif
+    branch: physical               # Fiziksel spoof dalı
+    description: "Webcam veya kamera ile canlı yüz doğrulama"
+    endpoints:
+      - /predict/webcam
+      - /predict/liveness
+
+# Sınıf ID eşleme (referans)
+class_mapping:
+  REAL: 0
+  FAKE: 1
+  SPOOF: 2
+
+# İnference maskeleme kuralları
+masking:
+  # Digital branch (FF++) kullanıldığında:
+  # - SPOOF logit'i -inf ile maskelenir
+  # - Softmax sadece REAL ve FAKE üzerinden hesaplanır
+  digital:
+    mask_class_ids: [2]            # SPOOF maskelenir
+    active_class_ids: [0, 1]       # REAL, FAKE aktif
+
+  # Physical branch (CASIA) kullanıldığında:
+  # - FAKE logit'i -inf ile maskelenir
+  # - Softmax sadece REAL ve SPOOF üzerinden hesaplanır
+  physical:
+    mask_class_ids: [1]            # FAKE maskelenir
+    active_class_ids: [0, 2]       # REAL, SPOOF aktif
+
+# Eğitim sırasında loss maskeleme
+training_loss_masking:
+  enabled: true
+  # FF++ örnekleri için: sadece REAL ve FAKE sınıfları loss'a katkı sağlar
+  # CASIA örnekleri için: sadece REAL ve SPOOF sınıfları loss'a katkı sağlar
+  # Bu, her kaynağın kendi sorumluluğundaki sınıflar üzerinden öğrenmesini sağlar

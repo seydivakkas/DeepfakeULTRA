@@ -1,0 +1,51 @@
+{
+  "roc_auc": 0.5,
+  "eer": 0.5,
+  "eer_threshold": Infinity,
+  "ece": 0.0009,
+  "fpr_at_95tpr": 1.0,
+  "macro_f1": 0.3329,
+  "confusion_matrix": [
+    [
+      31269,
+      0
+    ],
+    [
+      31386,
+      0
+    ]
+  ],
+  "per_source": {
+    "test": {
+      "accuracy": 0.4990193613276339,
+      "fp_count": 0,
+      "fn_count": 29886,
+      "total": 59655
+    },
+    "jury": {
+      "accuracy": 0.5,
+      "fp_count": 0,
+      "fn_count": 1500,
+      "total": 3000
+    }
+  },
+  "latency": {
+    "mean_ms": 39.32422200028668,
+    "median_ms": 38.44614999979967,
+    "p95_ms": 48.87958500366949,
+    "device": "cuda",
+    "n_runs": 50
+  },
+  "total_evaluated": 62655,
+  "fp_total": 0,
+  "fn_total": 31386,
+  "brier_score": 0.25,
+  "reliability_diagram": "C:\\Users\\seydieryilmaz\\Desktop\\DeepfakeULTRA\\evaluation\\reliability_diagram.png",
+  "temperature": 1.4607,
+  "calibrated_ece": 0.0009,
+  "onnx_export": {
+    "success": false,
+    "path": "C:\\Users\\seydieryilmaz\\Desktop\\DeepfakeULTRA\\models\\model.onnx",
+    "error": "No module named 'onnxscript'"
+  }
+}

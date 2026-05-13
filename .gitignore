@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Sanal ortam
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursorrules
+
+# Model dosyaları (büyük binary)
+models/*.pth
+models/*.onnx
+models/*.pt
+models/fairface/
+*.pth
+*.onnx
+*.pt
+
+# Veri seti
+dataset/
+data/
+feedback_images/
+
+# MLflow
+mlruns/
+
+# Loglar
+analytics_logs/
+audit_logs/
+logs/
+*.log
+
+# Raporlar (otomatik üretilen)
+reports/*.pdf
+
+# Veritabanı
+*.db
+db/
+
+# Ortam değişkenleri & API
+.env
+.env.local
+.api_keys.json
+users.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Geçici dosyalar
+tmp/
+temp/
+*.tmp
+
+# Agent framework (özel toolkit — repo'ya dahil değil)
+.agent/
+.antigravity/
+antigravity-kit-tr/
+GEMINI.md
