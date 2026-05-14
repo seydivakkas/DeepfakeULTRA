@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=380">
+  <title>DeepfakeULTRA</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">🔍</div>
+    <div class="title">
+      <h1>DeepfakeULTRA</h1>
+      <span class="subtitle">Forensik Deepfake Dedektörü</span>
+    </div>
+    <div id="serverStatus" class="status-dot offline" title="Sunucu durumu"></div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="loadingState" class="state hidden">
+    <div class="spinner"></div>
+    <p>Görsel analiz ediliyor...</p>
+    <span class="loading-sub">Tri-Branch CNN + Transformer çalışıyor</span>
+  </div>
+
+  <!-- Empty State -->
+  <div id="emptyState" class="state">
+    <div class="empty-icon">🖼️</div>
+    <p>Henüz analiz yapılmadı</p>
+    <span class="empty-sub">Bir görsele sağ tıklayın → <strong>"DeepfakeULTRA — Analiz Et"</strong></span>
+  </div>
+
+  <!-- Error State -->
+  <div id="errorState" class="state hidden">
+    <div class="error-icon">⚠️</div>
+    <p id="errorMessage">Bağlantı hatası</p>
+    <span class="error-sub">Sunucuyu başlatın: <code>python main.py api</code></span>
+  </div>
+
+  <!-- Result State -->
+  <div id="resultState" class="state hidden">
+    <!-- Thumbnail -->
+    <div class="thumbnail-row">
+      <img id="thumbnailImg" src="" alt="Analiz edilen görsel">
+      <div class="result-badge" id="resultBadge">
+        <span id="resultLabel">FAKE</span>
+      </div>
+    </div>
+
+    <!-- Confidence Bar -->
+    <div class="confidence-section">
+      <div class="confidence-header">
+        <span>Güven Skoru</span>
+        <span id="confidenceValue" class="confidence-value">94.7%</span>
+      </div>
+      <div class="confidence-bar">
+        <div id="confidenceFill" class="confidence-fill" style="width: 94.7%"></div>
+      </div>
+    </div>
+
+    <!-- Details -->
+    <div class="details-grid">
+      <div class="detail-item">
+        <span class="detail-label">Sahte Olasılığı</span>
+        <span id="fakeProb" class="detail-value">0.9471</span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Gerçek Olasılığı</span>
+        <span id="realProb" class="detail-value">0.0529</span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Platform</span>
+        <span id="platform" class="detail-value">—</span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Analiz Zamanı</span>
+        <span id="analysisTime" class="detail-value">—</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="btnDetailed" class="btn btn-primary">
+        🔬 Detaylı Analiz (Gradio)
+      </button>
+      <button id="btnCopy" class="btn btn-secondary">
+        📋 Sonucu Kopyala
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>DeepfakeULTRA v1.0</span>
+    <span>·</span>
+    <span>localhost:8000</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
