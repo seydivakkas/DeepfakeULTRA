@@ -1,8 +1,8 @@
 """
-DeepfakeULTRA — Model İndirme Scripti
-GitHub Releases'tan pretrained model dosyalarını indirir.
+DeepfakeULTRA -- Model Indirme Scripti
+GitHub Releases'tan pretrained model dosyalarini indirir.
 
-Kullanım:
+Kullanim:
     python download_model.py
     python download_model.py --model best_run5_forensic.pth
     python download_model.py --list
@@ -15,9 +15,13 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-# ══════════════════════════════════════════════════
-# Konfigürasyon
-# ══════════════════════════════════════════════════
+# Konsol encoding guvenli cikti
+if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("cp"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# ======================================================
+# Konfigurasyon
+# ======================================================
 REPO = "seydivakkas/DeepfakeULTRA"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 MODELS_DIR = Path(__file__).parent / "models"
@@ -31,30 +35,30 @@ def get_latest_release():
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            print("❌ Henüz bir GitHub Release bulunamadı.")
-            print(f"   Repo: https://github.com/{REPO}/releases")
+            print("[X] Henuz bir GitHub Release bulunamadi.")
+            print(f"    Repo: https://github.com/{REPO}/releases")
             sys.exit(1)
         raise
 
 
 def list_assets(release):
-    """Release'deki dosyaları listele."""
+    """Release'deki dosyalari listele."""
     assets = release.get("assets", [])
     if not assets:
-        print("⚠️ Release'te dosya yok.")
+        print("[!] Release'te dosya yok.")
         return []
 
-    print(f"\n📦 Release: {release['tag_name']} — {release['name']}")
-    print(f"   Tarih: {release['published_at'][:10]}")
-    print(f"\n{'Dosya':<40} {'Boyut':>10}  {'Durum':>8}")
-    print("─" * 62)
+    print(f"\n[i] Release: {release['tag_name']} -- {release['name']}")
+    print(f"    Tarih: {release['published_at'][:10]}")
+    print(f"\n{'Dosya':<40} {'Boyut':>10}  {'Durum':>10}")
+    print("-" * 64)
 
     for asset in assets:
         name = asset["name"]
         size_mb = asset["size"] / (1024 * 1024)
         local_path = MODELS_DIR / name
-        status = "✅ Mevcut" if local_path.exists() else "⬇️ İndir"
-        print(f"{name:<40} {size_mb:>7.1f} MB  {status:>8}")
+        status = "[OK] Mevcut" if local_path.exists() else "[>>] Indir"
+        print(f"{name:<40} {size_mb:>7.1f} MB  {status:>10}")
 
     return assets
 
@@ -67,17 +71,16 @@ def download_asset(asset, force=False):
     dest = MODELS_DIR / name
 
     if dest.exists() and not force:
-        print(f"✅ {name} zaten mevcut ({dest.stat().st_size / 1024 / 1024:.1f} MB). Atlandi.")
+        print(f"[OK] {name} zaten mevcut ({dest.stat().st_size / 1024 / 1024:.1f} MB). Atlandi.")
         return True
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n⬇️  İndiriliyor: {name} ({size / 1024 / 1024:.1f} MB)")
-    print(f"   Kaynak: {url}")
-    print(f"   Hedef:  {dest}")
+    print(f"\n[>>] Indiriliyor: {name} ({size / 1024 / 1024:.1f} MB)")
+    print(f"     Kaynak: {url}")
+    print(f"     Hedef:  {dest}")
 
     try:
-        # İlerleme göstergeli indirme
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=300) as resp:
             total = int(resp.headers.get("Content-Length", size))
@@ -94,15 +97,15 @@ def download_asset(asset, force=False):
                     pct = downloaded / total * 100
                     bar_len = 30
                     filled = int(bar_len * downloaded / total)
-                    bar = "█" * filled + "░" * (bar_len - filled)
-                    sys.stdout.write(f"\r   [{bar}] {pct:5.1f}%  {downloaded/1024/1024:.1f}/{total/1024/1024:.1f} MB")
+                    bar = "#" * filled + "." * (bar_len - filled)
+                    sys.stdout.write(f"\r     [{bar}] {pct:5.1f}%  {downloaded/1024/1024:.1f}/{total/1024/1024:.1f} MB")
                     sys.stdout.flush()
 
-        print(f"\n✅ {name} indirildi.")
+        print(f"\n[OK] {name} indirildi.")
         return True
 
     except Exception as e:
-        print(f"\n❌ İndirme hatası: {e}")
+        print(f"\n[X] Indirme hatasi: {e}")
         if dest.exists():
             dest.unlink()
         return False
@@ -112,16 +115,16 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="DeepfakeULTRA model indirici")
     parser.add_argument("--model", type=str, default=None,
-                        help="İndirilecek model dosyası (örn: best_run5_forensic.pth)")
+                        help="Indirilecek model dosyasi (orn: best_run5_forensic.pth)")
     parser.add_argument("--list", action="store_true",
-                        help="Mevcut dosyaları listele")
+                        help="Mevcut dosyalari listele")
     parser.add_argument("--force", action="store_true",
-                        help="Mevcut dosyaları yeniden indir")
+                        help="Mevcut dosyalari yeniden indir")
     parser.add_argument("--all", action="store_true",
-                        help="Tüm dosyaları indir")
+                        help="Tum dosyalari indir")
     args = parser.parse_args()
 
-    print("🔍 DeepfakeULTRA — Model İndirici")
+    print("DeepfakeULTRA -- Model Indirici")
     print(f"   Repo: https://github.com/{REPO}")
     print(f"   Hedef: {MODELS_DIR}/")
 
@@ -134,21 +137,21 @@ def main():
     if args.list:
         return
 
-    # İndirilecek dosyaları belirle
+    # Indirilecek dosyalari belirle
     if args.model:
         targets = [a for a in assets if a["name"] == args.model]
         if not targets:
-            print(f"\n❌ '{args.model}' bulunamadı. --list ile mevcut dosyaları görün.")
+            print(f"\n[X] '{args.model}' bulunamadi. --list ile mevcut dosyalari gorun.")
             return
     elif args.all:
         targets = assets
     else:
-        # Varsayılan: sadece .pth dosyaları
+        # Varsayilan: sadece .pth dosyalari
         targets = [a for a in assets if a["name"].endswith(".pth")]
         if not targets:
             targets = assets
 
-    print(f"\n📥 {len(targets)} dosya indirilecek...")
+    print(f"\n[>>] {len(targets)} dosya indirilecek...")
 
     success = 0
     for asset in targets:
@@ -156,8 +159,8 @@ def main():
             success += 1
 
     print(f"\n{'='*50}")
-    print(f"✅ {success}/{len(targets)} dosya başarıyla indirildi.")
-    print(f"💡 Şimdi uygulamayı başlatabilirsiniz: python app.py")
+    print(f"[OK] {success}/{len(targets)} dosya basariyla indirildi.")
+    print(f"[*] Simdi uygulamayi baslatabilirsiniz: python app.py")
 
 
 if __name__ == "__main__":
