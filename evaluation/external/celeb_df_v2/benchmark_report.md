@@ -9,7 +9,7 @@
 ## Dataset Bilgisi
 
 | Ozellik | Deger |
-|---------|-------|
+| --------- |-------|
 | Kaynak | Celeb-DF v2 (resmi ZIP, 9.5 GB) |
 | Video Sayisi | 590 real + 5639 fake |
 | Test Gorseli | **1,000 REAL + 890 FAKE = 1,890** |
@@ -21,7 +21,7 @@
 ## Performans Metrikleri
 
 | Metrik | Deger |
-|--------|-------|
+| -------- |-------|
 | **ROC-AUC** | **0.5439** |
 | **EER** | 0.4651 (threshold=0.2968) |
 | **ECE** | 0.1694 |
@@ -30,14 +30,14 @@
 ### Karar Esikleri
 
 | Esik Tipi | Threshold | Accuracy | Macro F1 |
-|-----------|-----------|----------|----------|
+| ----------- |-----------| ---------- |----------|
 | **Optimal (Youden J)** | 0.3209 (J=0.0833) | **0.5566** | **0.5162** |
 | Sabit (0.5) | 0.5000 | 0.5212 | 0.3523 |
 
 ### Confusion Matrix (Optimal Threshold = 0.3209)
 
 |  | Predicted REAL | Predicted FAKE |
-|--|----------------|----------------|
+| -- |----------------| ---------------- |
 | **Actual REAL** | 799 (TN) | 201 (FP) |
 | **Actual FAKE** | 637 (FN) | 253 (TP) |
 
@@ -47,7 +47,7 @@
 ### Olasilik Dagilimi
 
 | Sinif | Ortalama | Std |
-|-------|----------|-----|
+| ------- |----------| ----- |
 | REAL | 0.3107 | 0.0572 |
 | FAKE | 0.3148 | 0.0529 |
 
@@ -56,7 +56,7 @@
 ### Latency
 
 | Metrik | Deger |
-|--------|-------|
+| -------- |-------|
 | Ortalama | 18.3 ms |
 | Medyan | 18.1 ms |
 | P95 | 22.9 ms |
@@ -67,9 +67,11 @@
 ## Gorseller
 
 ### ROC Egrisi
+
 ![ROC Curve](roc_curve.png)
 
 ### Confusion Matrix
+
 ![Confusion Matrix](confusion_matrix.png)
 
 ---

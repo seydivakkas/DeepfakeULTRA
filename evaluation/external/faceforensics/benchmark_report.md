@@ -9,7 +9,7 @@
 ## Dataset Bilgisi
 
 | Ozellik | Deger |
-|---------|-------|
+| --------- |-------|
 | Kaynak | FaceForensics++ resmi sunucu (EU2) |
 | Sikistirma | c23 (H.264, yuksek kalite) |
 | Indirilen Video | 50 original + 50 Deepfakes + 50 Face2Face |
@@ -22,7 +22,7 @@
 ## Performans Metrikleri
 
 | Metrik | Deger |
-|--------|-------|
+| -------- |-------|
 | **ROC-AUC** | **0.5121** |
 | **EER** | 0.4920 (threshold=0.3755) |
 | **ECE** | 0.2911 |
@@ -31,14 +31,14 @@
 ### Karar Esikleri
 
 | Esik Tipi | Threshold | Accuracy | Macro F1 |
-|-----------|-----------|----------|----------|
+| ----------- |-----------| ---------- |----------|
 | **Optimal (Youden J)** | 0.4076 (J=0.0580) | **0.4640** | **0.4638** |
 | Sabit (0.5) | 0.5000 | 0.3560 | 0.2995 |
 
 ### Confusion Matrix (Optimal Threshold = 0.4076)
 
 |  | Predicted REAL | Predicted FAKE |
-|--|----------------|----------------|
+| -- |----------------| ---------------- |
 | **Actual REAL** | 181 (TN) | 69 (FP) |
 | **Actual FAKE** | 333 (FN) | 167 (TP) |
 
@@ -48,7 +48,7 @@
 ### Confusion Matrix (Sabit Threshold = 0.50)
 
 |  | Predicted REAL | Predicted FAKE |
-|--|----------------|----------------|
+| -- |----------------| ---------------- |
 | **Actual REAL** | 240 (TN) | 10 (FP) |
 | **Actual FAKE** | 473 (FN) | 27 (TP) |
 
@@ -57,7 +57,7 @@
 ### Olasilik Dagilimi
 
 | Sinif | Ortalama | Std |
-|-------|----------|-----|
+| ------- |----------| ----- |
 | REAL | 0.3732 | 0.0640 |
 | FAKE | 0.3767 | 0.0680 |
 
@@ -66,7 +66,7 @@
 ### Latency
 
 | Metrik | Deger |
-|--------|-------|
+| -------- |-------|
 | Ortalama | 15.2 ms |
 | Medyan | 15.1 ms |
 | P95 | 16.5 ms |
@@ -77,9 +77,11 @@
 ## Gorseller
 
 ### ROC Egrisi
+
 ![ROC Curve](roc_curve.png)
 
 ### Confusion Matrix
+
 ![Confusion Matrix](confusion_matrix.png)
 
 ---
@@ -89,7 +91,7 @@
 FF++ test seti iki farkli manipulasyon yontemi iceriyor:
 
 | Yontem | Tur | Aciklama |
-|--------|-----|----------|
+| -------- |-----| ---------- |
 | **Deepfakes** | Face Swap | Autoencoder tabanli yuz degistirme |
 | **Face2Face** | Reenactment | Yuz ifadesi transferi |
 
