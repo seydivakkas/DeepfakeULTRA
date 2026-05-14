@@ -36,6 +36,30 @@ def analyze_image(
     predictor = get_predictor()
     base_result = predictor.predict(img_np)
 
+    # NON-PHOTO: karikatur/cizim tespiti — pipeline'i atla
+    if base_result.get("label") == "NON-PHOTO":
+        result = {
+            "verdict": "NON-PHOTO",
+            "fake_prob": 0.0,
+            "real_prob": 0.0,
+            "confidence": base_result.get("confidence", 0),
+            "calibrated": False,
+            "gradcam_score": 0.0,
+            "counterfactual_prob": 0.0,
+            "tta_std": 0.0,
+            "tta_individual": [],
+            "face_boxes": [],
+            "heatmaps": {},
+            "dwt_map": None,
+            "fusion_weights": {"rgb": 0, "freq": 0, "geo": 0},
+            "watermarked_image": image,
+            "original_image": image,
+            "warning": base_result.get("warning", ""),
+            "photo_filter": base_result.get("photo_filter", {}),
+            "analysis_id": None,
+        }
+        return result
+
     result = {
         "verdict": base_result["label"],
         "fake_prob": base_result["fake_prob"],

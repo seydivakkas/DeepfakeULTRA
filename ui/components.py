@@ -187,14 +187,21 @@ def build_context_html(r: dict) -> str:
     v       = r.get('verdict', '?')
     fake_p  = r.get('fake_prob', 0)
     real_p  = r.get('real_prob', 0)
-    conf    = r.get('confidence', 0)
     tta_std = r.get('tta_std', 0)
     gcam    = r.get('gradcam_score', 0)
     cf_prob = r.get('counterfactual_prob', 0)
     n_tta   = len(r.get('tta_individual', []))
 
-    badge_color = '#EF4444' if v == 'FAKE' else '#22C55E'
-    badge_icon  = '🚨' if v == 'FAKE' else '✅'
+    # Verdict'e gore guven ve renk
+    if v == 'FAKE':
+        badge_color, badge_icon = '#EF4444', '🚨'
+        conf = fake_p
+    elif v == 'REAL':
+        badge_color, badge_icon = '#22C55E', '✅'
+        conf = real_p
+    else:  # UNCERTAIN
+        badge_color, badge_icon = '#F59E0B', '⚠️'
+        conf = max(fake_p, real_p)
     conf_pct    = conf * 100
     fake_pct    = fake_p * 100
     real_pct    = real_p * 100
@@ -345,13 +352,29 @@ def handle_single_analysis(image, tta_count, source_platform="original"):
     except Exception:
         pass
 
-    # Verdict icon: FAKE=kirmizi, REAL=yesil
+    # Verdict icon: FAKE=kirmizi, REAL=yesil, NON-PHOTO=turuncu
     v = r['verdict']
-    v_icon = "\U0001f6a8" if v == "FAKE" else "\u2705"
-    display_prob = r['fake_prob'] if v == "FAKE" else r['real_prob']
+    if v == "FAKE":
+        v_icon = "\U0001f6a8"
+        display_prob = r['fake_prob']
+    elif v == "REAL":
+        v_icon = "\u2705"
+        display_prob = r['real_prob']
+    elif v == "NON-PHOTO":
+        v_icon = "\U0001f5bc\ufe0f"
+        display_prob = r.get('confidence', 0)
+    else:
+        v_icon = "\u26a0\ufe0f"
+        display_prob = max(r['fake_prob'], r['real_prob'])
 
-    verdict_text = (f"### {v_icon} {v} ({display_prob:.4f})\n"
-                    f"Guven: %{r['confidence']*100:.1f}{source_note}")
+    if v == "NON-PHOTO":
+        warning_msg = r.get('warning', 'Bu gorsel bir fotograf degil.')
+        verdict_text = (f"### {v_icon} FOTOGRAF DEGIL\n"
+                        f"> ⚠️ {warning_msg}\n\n"
+                        f"Deepfake analizi yalnizca gercek fotograflar icin gecerlidir.")
+    else:
+        verdict_text = (f"### {v_icon} {v} ({display_prob:.4f})\n"
+                        f"Guven: %{display_prob*100:.1f}{source_note}")
 
     metrics = (f"| Metrik | Deger |\n|---|---|\n"
                f"| Verdict | {r['verdict']} |\n"
