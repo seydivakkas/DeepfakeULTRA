@@ -45,6 +45,7 @@ cross-dataset genelleme yeteneğine sahiptir.
 - [Proje Yapısı](#-proje-yapısı)
 - [Eğitim Pipeline'ı](#-eğitim-pipelineı)
 - [Teknoloji Yığını](#️-teknoloji-yığını)
+- [Chrome Uzantısı](#-chrome-uzantısı)
 - [Bilinen Sınırlamalar & Gelecek Çalışmalar](#-bilinen-sınırlamalar--gelecek-çalışmalar)
 
 ---
@@ -1332,6 +1333,85 @@ python scripts/evaluate_model.py --tta      # 5 dataset cross-dataset benchmark
 | **Altyapı** | Docker | — | Konteyner |
 | | tqdm | `>=4.66.0` | İlerleme çubuğu |
 | | pydantic | `>=2.0.0` | Veri doğrulama |
+
+---
+
+## 🧩 Chrome Uzantısı
+
+Web'deki herhangi bir görsele **sağ tıklayarak** doğrudan DeepfakeULTRA ile deepfake analizi yapabilirsiniz. Uzantı, görseli otomatik olarak Gradio arayüzüne yükler ve analizi başlatır.
+
+### Nasıl Çalışır?
+
+```
+  Herhangi bir web sayfası (Google, haber sitesi, sosyal medya...)
+  ┌────────────────────────────────────────────────────┐
+  │                                                    │
+  │   Görsele sağ tıkla                                │
+  │        │                                           │
+  │        ▼                                           │
+  │   "🔍 DeepfakeULTRA — Görüntüyü Analiz Et"        │
+  │        │                                           │
+  └────────┼───────────────────────────────────────────┘
+           │
+           ▼
+  ┌────────────────────────────────────────────────────┐
+  │   localhost:7860 (Gradio) otomatik açılır          │
+  │        │                                           │
+  │        ├── Görsel otomatik indirilir               │
+  │        ├── Upload alanına enjekte edilir            │
+  │        └── "🔬 Analiz Et" butonuna basılır         │
+  │                                                    │
+  │   Sonuçlar Gradio'da görüntülenir:                 │
+  │   FAKE/REAL + GradCAM++ + Frekans + XAI            │
+  └────────────────────────────────────────────────────┘
+```
+
+### Kurulum
+
+```bash
+# 1. Chrome'da uzantı sayfasını aç
+#    Adres çubuğuna yaz: chrome://extensions
+
+# 2. "Geliştirici modu" toggle'ını AÇ (sağ üst köşe)
+
+# 3. "Paketlenmemiş uzantı yükle" butonuna tıkla
+
+# 4. DeepfakeULTRA/extension/ klasörünü seç
+```
+
+### Kullanım
+
+1. **Ön koşul:** `python app.py` çalışıyor olmalı (`localhost:7860`)
+2. Web'de herhangi bir görsele **sağ tıklayın**
+3. **"🔍 DeepfakeULTRA — Görüntüyü Analiz Et"** seçeneğine tıklayın
+4. Gradio sekmesi açılır, görsel otomatik yüklenir ve analiz başlar
+
+> **Not:** Zaten açık bir Gradio sekmesi varsa, yeni sekme açmak yerine mevcut sekmeyi kullanır.
+
+### Uzantı Dosyaları
+
+```
+extension/
+├── manifest.json          # Manifest V3 konfigürasyon
+├── background.js          # Service worker (context menü + yönlendirme)
+├── content.js             # Gradio sayfasına görsel enjeksiyonu
+├── popup.html             # Uzantı popup UI
+├── popup.css              # Dark theme styling
+├── popup.js               # Popup logic
+└── icons/                 # 16/48/128px ikonlar
+    ├── icon16.png
+    ├── icon48.png
+    └── icon128.png
+```
+
+### Desteklenen Senaryolar
+
+| Senaryo | Yöntem | Durum |
+|---|---|---|
+| Doğrudan erişilebilir görsel (Google, Wikipedia) | URL ile indirme | ✅ |
+| CORS korumalı görsel (Instagram, Facebook) | Canvas → base64 fallback | ✅ |
+| Zaten açık Gradio sekmesi | Mevcut sekmeyi güncelle | ✅ |
+| Sunucu kapalıyken tıklama | Hata bildirimi | ✅ |
 
 ---
 
