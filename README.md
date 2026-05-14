@@ -46,6 +46,7 @@ cross-dataset genelleme yeteneğine sahiptir.
 - [Eğitim Pipeline'ı](#-eğitim-pipelineı)
 - [Teknoloji Yığını](#️-teknoloji-yığını)
 - [Chrome Uzantısı](#-chrome-uzantısı)
+- [Akıllı Fotoğraf Filtresi](#-akıllı-fotoğraf-filtresi-non-photo-detection)
 - [Bilinen Sınırlamalar & Gelecek Çalışmalar](#-bilinen-sınırlamalar--gelecek-çalışmalar)
 
 ---
@@ -1412,6 +1413,109 @@ extension/
 | CORS korumalı görsel (Instagram, Facebook) | Canvas → base64 fallback | ✅ |
 | Zaten açık Gradio sekmesi | Mevcut sekmeyi güncelle | ✅ |
 | Sunucu kapalıyken tıklama | Hata bildirimi | ✅ |
+
+---
+
+## 🖼️ Akıllı Fotoğraf Filtresi (Non-Photo Detection)
+
+Deepfake analizi yalnızca **gerçek fotoğraflar** üzerinde anlamlıdır. Karikatür, çizim, illüstrasyon, 3D render gibi fotoğraf olmayan görseller yüklendiğinde model yanıltıcı sonuçlar üretebilir. Bu sorunu çözmek için **eğitimsiz hibrit ön-filtre** geliştirilmiştir.
+
+### Neden Gerekli?
+
+```
+Model Eğitim Dağılımı:
+
+  REAL sınıfı          FAKE sınıfı           OOD (Dağılım Dışı)
+  ┌──────────┐         ┌──────────┐          ┌──────────┐
+  │ Gerçek   │         │ Deepfake │          │ Karikatür│
+  │ Fotoğraf │         │ Fotoğraf │          │ Çizim    │
+  │ (FFHQ,   │         │ (SimSwap,│          │ 3D Render│
+  │  UTKFace) │         │  DF40)   │          │ İlüstr.  │
+  └──────────┘         └──────────┘          └──────────┘
+       ✅                   ✅                    ❌
+    Eğitimde var          Eğitimde var         Eğitimde YOK!
+```
+
+Model karikatür/çizim hiç görmediği için "deepfake artefaktı yok" → "REAL" kararı verir. Bu **teknik olarak tutarlı ama kavramsal olarak yanlıştır.**
+
+### Hibrit Filtre Mimarisi
+
+```
+Görsel Yüklendi
+       │
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│  AŞAMA 1: İstatistiksel Analiz (<10ms)                      │
+│  ├── Benzersiz Renk Oranı (color_ratio)                     │
+│  ├── Kenar Keskinliği (sharp_ratio)                          │
+│  ├── Doğal Gürültü Seviyesi (noise_std)                     │
+│  └── Düz Renk Bölgesi Oranı (flat_ratio)                    │
+│                     → stat_score (0-1)                       │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│  AŞAMA 2: CLIP Doğrulama (~500ms)                           │
+│  ├── "a real photograph of a human face"                    │
+│  └── "a cartoon drawing illustration caricature of a face"  │
+│                     → clip_score (0-1)                       │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+            Hibrit Skor = clip × 0.60 + stat × 0.40
+                               │
+                    ┌──────────┴──────────┐
+                < 0.40                  ≥ 0.40
+                    │                     │
+          🖼️ NON-PHOTO             Normal Pipeline
+          "Fotoğraf Değil"          (FAKE / REAL)
+```
+
+### İstatistiksel Metrikler
+
+| Metrik | Fotoğrafta | Karikatürde | Ne Ölçüyor? |
+|---|---|---|---|
+| **color_ratio** | >0.15 | <0.05 | Benzersiz renk çeşitliliği (fotoğraflar çok renkli) |
+| **sharp_ratio** | <0.08 | >0.15 | Kenar keskinliği (çizimler sert kenarlara sahip) |
+| **noise_std** | >3.0 | <1.5 | Doğal gürültü (fotoğraflarda sensör gürültüsü var) |
+| **flat_ratio** | <0.60 | >0.75 | Düz renk bölgeleri (çizimler geniş tek renk alanları) |
+
+### CLIP Doğrulama
+
+```python
+# OpenAI CLIP-ViT-B/32 modeli — sıfır eğitim, doğal dil-görsel eşleştirme
+texts = [
+    "a real photograph of a human face",       # Fotoğraf olasılığı
+    "a cartoon drawing illustration caricature" # Çizim olasılığı
+]
+# Softmax → photo_prob vs cartoon_prob
+```
+
+**Özellikler:**
+- ⚡ Lazy loading — CLIP modeli sadece ilk kullanımda yüklenir (~400MB)
+- 🔒 CPU'da çalışır — GPU VRAM'e ek yük getirmez
+- 🔄 Graceful degradation — CLIP yüklü değilse sadece istatistiksel filtre aktif
+
+### UI Çıktısı
+
+Fotoğraf olmayan bir görsel tespit edildiğinde:
+
+```
+🖼️ FOTOĞRAF DEĞİL
+
+⚠️ Bu görsel bir fotoğraf değil (karikatür/çizim/illüstrasyon).
+Deepfake analizi yalnızca gerçek fotoğraflar için geçerlidir.
+```
+
+Metrikler tablosunda ek bilgiler gösterilir:
+
+| Metrik | Değer |
+|---|---|
+| Verdict | NON-PHOTO |
+| Method | clip+statistical |
+| CLIP Score | 0.1234 |
+| CLIP Label | cartoon/illustration |
+| Photo Score | 0.2100 |
 
 ---
 
