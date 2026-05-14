@@ -1,0 +1,60 @@
+{
+  "roc_auc": 0.5068,
+  "eer": 0.499,
+  "eer_threshold": 0.5554,
+  "optimal_threshold": 0.5226,
+  "youden_j": 0.048,
+  "ece": 0.1282,
+  "fpr_at_95tpr": 0.952,
+  "fpr_at_95tpr_threshold": 0.4154,
+  "accuracy_optimal": 0.5627,
+  "accuracy_fixed_05": 0.5733,
+  "macro_f1_optimal": 0.5223,
+  "macro_f1_fixed_05": 0.5054,
+  "confusion_matrix_optimal": [
+    [
+      102,
+      148
+    ],
+    [
+      180,
+      320
+    ]
+  ],
+  "confusion_matrix_fixed_05": [
+    [
+      76,
+      174
+    ],
+    [
+      146,
+      354
+    ]
+  ],
+  "per_source": {
+    "faceforensics": {
+      "accuracy": 0.5626666666666666,
+      "fp_count": 148,
+      "fn_count": 180,
+      "total": 750
+    }
+  },
+  "probability_distribution": {
+    "real_mean": 0.5377399325370789,
+    "real_std": 0.06723058968782425,
+    "fake_mean": 0.5388016104698181,
+    "fake_std": 0.06928682327270508
+  },
+  "latency": {
+    "mean_ms": 16.858722000033595,
+    "median_ms": 16.893699998036027,
+    "p95_ms": 18.757374997221632,
+    "device": "cuda",
+    "n_runs": 50
+  },
+  "total_evaluated": 750,
+  "n_real": 250,
+  "n_fake": 500,
+  "fp_total": 148,
+  "fn_total": 180
+}

@@ -1,0 +1,60 @@
+{
+  "roc_auc": 0.667,
+  "eer": 0.3704,
+  "eer_threshold": 0.4862,
+  "optimal_threshold": 0.5001,
+  "youden_j": 0.2696,
+  "ece": 0.076,
+  "fpr_at_95tpr": 0.873,
+  "fpr_at_95tpr_threshold": 0.4013,
+  "accuracy_optimal": 0.6397,
+  "accuracy_fixed_05": 0.6392,
+  "macro_f1_optimal": 0.6343,
+  "macro_f1_fixed_05": 0.6338,
+  "confusion_matrix_optimal": [
+    [
+      719,
+      281
+    ],
+    [
+      400,
+      490
+    ]
+  ],
+  "confusion_matrix_fixed_05": [
+    [
+      718,
+      282
+    ],
+    [
+      400,
+      490
+    ]
+  ],
+  "per_source": {
+    "celeb_df_v2": {
+      "accuracy": 0.6396825396825396,
+      "fp_count": 281,
+      "fn_count": 400,
+      "total": 1890
+    }
+  },
+  "probability_distribution": {
+    "real_mean": 0.47357526421546936,
+    "real_std": 0.06641354411840439,
+    "fake_mean": 0.5113722085952759,
+    "fake_std": 0.06807602196931839
+  },
+  "latency": {
+    "mean_ms": 16.939867999317357,
+    "median_ms": 16.08874999874388,
+    "p95_ms": 22.108765002849392,
+    "device": "cuda",
+    "n_runs": 50
+  },
+  "total_evaluated": 1890,
+  "n_real": 1000,
+  "n_fake": 890,
+  "fp_total": 281,
+  "fn_total": 400
+}

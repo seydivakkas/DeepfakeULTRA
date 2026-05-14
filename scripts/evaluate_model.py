@@ -1,11 +1,12 @@
 """
-GÖREV 5: Çok Katmanlı Model Değerlendirme
-ROC-AUC, EER, ECE, FPR@95TPR, per-source accuracy, latency ölçümü.
+Model Degerlendirme  DataLoader Batch Inference + Youden's J Threshold
+ROC-AUC, EER, ECE, FPR@95TPR, per-source accuracy, latency olcumu.
 
-Kullanım:
+Kullanim:
     python scripts/evaluate_model.py
-    python scripts/evaluate_model.py --checkpoint models/best_run6.pth
+    python scripts/evaluate_model.py --checkpoint models/best_run5_forensic.pth
     python scripts/evaluate_model.py --jury-only
+    python scripts/evaluate_model.py --external dataset/external_tests/celeb_df_v2
 """
 import os
 import sys
@@ -18,6 +19,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 from PIL import Image
+from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -34,7 +36,7 @@ except ImportError:
 
 OUTPUT_DIR = Path(__file__).parent.parent / "evaluation"
 
-# Kalibrasyon modülü (G5)
+# Kalibrasyon modulu (G5)
 try:
     from core.calibration import (
         TemperatureScaling, compute_brier_score,
@@ -45,9 +47,19 @@ try:
 except ImportError:
     HAS_CALIBRATION = False
 
+# MLflow
+try:
+    import mlflow
+    HAS_MLFLOW = True
+except ImportError:
+    HAS_MLFLOW = False
 
+
+# 
+# MODEL YUKLEME
+# 
 def load_model(checkpoint_path=None):
-    """Model yükle."""
+    """Model yukle."""
     from core.dual_mobilenetv3 import DualPathDeepfakeDetector
     model = DualPathDeepfakeDetector()
     cp = checkpoint_path or str(paths.BEST_MODEL_PATH)
@@ -57,87 +69,89 @@ def load_model(checkpoint_path=None):
             model.load_state_dict(state["model_state_dict"], strict=False)
         else:
             model.load_state_dict(state, strict=False)
-        print(f"  ✅ Model yüklendi: {cp}")
+        print(f"   Model yuklendi: {cp}")
     else:
-        print(f"  ⚠️ Checkpoint bulunamadı: {cp}")
+        print(f"   Checkpoint bulunamadi: {cp}")
     model.to(DEVICE).eval()
     return model
 
 
-# Lazy-init paylaşılan extractor instance'ları (her çağrıda yeniden oluşturmayı önle)
-_shared_dwt = None
-_shared_mesh = None
+# 
+# DATALOADER TABANLI BATCH INFERENCE
+# 
+def batch_evaluate(model, data_dir: Path, split: str = "val", source_name: str = "test",
+                   use_tta: bool = False, tta_n: int = 10):
+    """DataLoader ile batch inference  egitimle ayni pipeline."""
+    from core.data_pipeline import DeepfakeDataset
+    from tqdm import tqdm
+
+    # TTA predictor (opsiyonel)
+    tta_predictor = None
+    if use_tta:
+        try:
+            from core.tta_inference import TTAPredictor
+            tta_predictor = TTAPredictor(model, n_aug=tta_n, device=str(DEVICE))
+            print(f"  [TTA] aktif: {tta_n} augmentasyon")
+        except ImportError:
+            print("  [UYARI] TTA modulu bulunamadi, normal inference kullaniliyor")
+
+    ds = DeepfakeDataset(str(data_dir), split=split, source_tag=source_name)
+    if len(ds) == 0:
+        print(f"   {data_dir} dizininde veri bulunamadi!")
+        return [], [], []
+
+    # TTA modunda batch size kucult (N kopya bellekte)
+    bs = 32 if use_tta else 64
+    loader = DataLoader(
+        ds, batch_size=bs, shuffle=False,
+        num_workers=4, pin_memory=DEVICE.type == "cuda",
+        persistent_workers=True,
+    )
+
+    all_probs = []
+    all_labels = []
+    all_sources = []
+
+    total_batches = len(loader)
+    desc = f"[{source_name}" + (" TTA]" if use_tta else "]")
+    with torch.no_grad():
+        for batch in tqdm(loader, desc=desc, total=total_batches):
+            rgb, freq, mesh, labels, source_tags = batch
+            rgb = rgb.to(DEVICE)
+            freq = freq.to(DEVICE)
+            mesh = mesh.to(DEVICE)
+
+            if tta_predictor:
+                probs = tta_predictor.predict_batch(rgb, freq, mesh).cpu().numpy()
+            else:
+                logits = model(rgb, freq, mesh)
+                probs = torch.softmax(logits, dim=1).cpu().numpy()
+
+            all_probs.extend(probs)
+            all_labels.extend(labels.numpy())
+            all_sources.extend([source_name] * labels.size(0))
+
+    return np.array(all_labels), np.array(all_probs), all_sources
 
 
-def _get_extractors():
-    """Paylaşılan DWT ve FaceMesh extractor'larını döndür."""
-    global _shared_dwt, _shared_mesh
-    if _shared_dwt is None:
-        from core.data_pipeline import FaceMeshExtractor
-        # Eğitimle aynı frekans extractor'ı kullan
-        if getattr(model_cfg, 'USE_HYBRID_FREQ', False):
-            try:
-                from core.frequency_v2 import HybridFrequencyExtractor
-                _shared_dwt = HybridFrequencyExtractor(
-                    wavelets=model_cfg.DWT_WAVELETS,
-                    size=model_cfg.IMG_SIZE,
-                    include_dwt=True, include_dct=True, include_phase=True,
-                )
-            except ImportError:
-                from core.data_pipeline import MultiScaleDWT
-                _shared_dwt = MultiScaleDWT()
-        else:
-            from core.data_pipeline import MultiScaleDWT
-            _shared_dwt = MultiScaleDWT()
-        _shared_mesh = FaceMeshExtractor()
-    return _shared_dwt, _shared_mesh
-
-
-def predict_image(model, image_path: Path, transform) -> dict:
-    """Tek görsel için tahmin — eğitim pipeline ile aynı ön işleme."""
-    try:
-        img = Image.open(image_path).convert("RGB")
-        img_np = np.array(img)  # DWT ve FaceMesh numpy bekler
-
-        rgb_tensor = transform(img).unsqueeze(0).to(DEVICE)
-
-        dwt, mesh_ext = _get_extractors()
-
-        # Frekans haritası (numpy array girdi)
-        freq_map = dwt(img_np)
-        if freq_map is not None:
-            freq_tensor = torch.from_numpy(freq_map).float().unsqueeze(0).to(DEVICE)
-        else:
-            freq_tensor = torch.zeros(1, model_cfg.DWT_CHANNELS, 224, 224).to(DEVICE)
-
-        # Face mesh (numpy array girdi)
-        mesh = mesh_ext(img_np)
-        if mesh is not None:
-            mesh_tensor = torch.from_numpy(mesh).float().unsqueeze(0).to(DEVICE)
-        else:
-            mesh_tensor = torch.zeros(1, model_cfg.MESH_INPUT_DIM).to(DEVICE)
-
-        with torch.no_grad():
-            logits = model(rgb_tensor, freq_tensor, mesh_tensor)
-            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-
-        return {
-            "fake_prob": float(probs[1]),
-            "real_prob": float(probs[0]),
-            "pred": int(probs[1] > 0.5),
-        }
-    except Exception as e:
-        return {"fake_prob": 0.5, "real_prob": 0.5, "pred": 0, "error": str(e)}
-
-
+# 
+# METRIK HESAPLAMA
+# 
 def compute_eer(y_true, y_scores):
     """Equal Error Rate hesapla."""
     fpr, tpr, thresholds = roc_curve(y_true, y_scores)
     fnr = 1 - tpr
-    # FPR == FNR noktasını bul
     idx = np.argmin(np.abs(fpr - fnr))
     eer = (fpr[idx] + fnr[idx]) / 2
     return float(eer), float(thresholds[idx])
+
+
+def compute_optimal_threshold(y_true, y_scores):
+    """Youden's J-statistic ile optimal threshold bul."""
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+    j_scores = tpr - fpr
+    best_idx = np.argmax(j_scores)
+    return float(thresholds[best_idx]), float(j_scores[best_idx])
 
 
 def compute_ece(y_true, y_probs, n_bins=15):
@@ -159,28 +173,23 @@ def compute_ece(y_true, y_probs, n_bins=15):
 
 def compute_fpr_at_tpr(y_true, y_scores, target_tpr=0.95):
     """Belirli TPR'da FPR hesapla."""
-    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
     idx = np.argmin(np.abs(tpr - target_tpr))
-    return float(fpr[idx])
+    return float(fpr[idx]), float(thresholds[idx])
 
 
-def evaluate_dataset(model, data_dir: Path, transform, label: int, source_name: str = "") -> list:
-    """Bir dizindeki tüm görselleri değerlendir."""
-    results = []
-    files = list(data_dir.glob("*.jpg")) + list(data_dir.glob("*.png"))
+# 
+# LATENCY OLCUMU
+# 
+def measure_latency(model, n_runs=50):
+    """Inference latency olcumu."""
+    from torchvision import transforms
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
-    for f in files:
-        pred = predict_image(model, f, transform)
-        pred["true_label"] = label
-        pred["file"] = f.name
-        pred["source"] = source_name or data_dir.parent.name
-        results.append(pred)
-
-    return results
-
-
-def measure_latency(model, transform, n_runs=50):
-    """Inference latency ölçümü."""
     dummy_img = Image.new("RGB", (224, 224), color=(128, 128, 128))
     rgb = transform(dummy_img).unsqueeze(0).to(DEVICE)
     freq = torch.randn(1, model_cfg.DWT_CHANNELS, 224, 224).to(DEVICE)
@@ -191,7 +200,6 @@ def measure_latency(model, transform, n_runs=50):
         with torch.no_grad():
             model(rgb, freq, mesh)
 
-    # GPU sync
     if DEVICE.type == "cuda":
         torch.cuda.synchronize()
 
@@ -213,19 +221,92 @@ def measure_latency(model, transform, n_runs=50):
     }
 
 
+# 
+# ROC CURVE GORSELLESTIME
+# 
+def save_roc_curve(y_true, y_scores, output_path, title="ROC Curve"):
+    """ROC egrisini PNG olarak kaydet."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        fpr, tpr, _ = roc_curve(y_true, y_scores)
+        auc = roc_auc_score(y_true, y_scores)
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        ax.plot(fpr, tpr, color="#2196F3", lw=2, label=f"AUC = {auc:.4f}")
+        ax.plot([0, 1], [0, 1], color="#ccc", lw=1, linestyle="--")
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.set_title(title)
+        ax.legend(loc="lower right")
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(str(output_path), dpi=150)
+        plt.close(fig)
+        return str(output_path)
+    except ImportError:
+        return None
+
+
+def save_confusion_matrix_plot(cm, output_path, class_names=None):
+    """Confusion matrix gorselini kaydet."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        names = class_names or model_cfg.CLASS_NAMES
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+        im = ax.imshow(cm, interpolation="nearest", cmap="Blues")
+        ax.set_title("Confusion Matrix")
+        fig.colorbar(im, ax=ax)
+        ax.set_xticks(range(len(names)))
+        ax.set_yticks(range(len(names)))
+        ax.set_xticklabels(names)
+        ax.set_yticklabels(names)
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("True")
+
+        # Hucre degerleri
+        for i in range(len(names)):
+            for j in range(len(names)):
+                color = "white" if cm[i, j] > cm.max() / 2 else "black"
+                ax.text(j, i, f"{cm[i, j]:,}", ha="center", va="center", color=color, fontsize=12)
+
+        fig.tight_layout()
+        fig.savefig(str(output_path), dpi=150)
+        plt.close(fig)
+        return str(output_path)
+    except ImportError:
+        return None
+
+
+# 
+# ANA DEGERLENDIRME
+# 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Model değerlendirme")
+    parser = argparse.ArgumentParser(description="Model degerlendirme")
     parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--jury-only", action="store_true")
+    parser.add_argument("--external", type=str, default=None,
+                        help="Harici dataset dizini (cross-dataset benchmark)")
+    parser.add_argument("--tta", action="store_true",
+                        help="Test-Time Augmentation aktif et")
+    parser.add_argument("--tta-n", type=int, default=10,
+                        help="TTA augmentasyon sayisi (varsayilan: 10)")
     args = parser.parse_args()
 
     print("=" * 60)
-    print("GÖREV 5: Çok Katmanlı Model Değerlendirme")
+    tta_label = " + TTA" if args.tta else ""
+    print(f"Model Degerlendirme  DataLoader Batch Inference{tta_label}")
     print("=" * 60)
 
     if not HAS_SKLEARN:
-        print("❌ scikit-learn gerekli: pip install scikit-learn")
+        print("scikit-learn gerekli: pip install scikit-learn")
         return
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -234,77 +315,99 @@ def main():
     fp_dir.mkdir(exist_ok=True)
     fn_dir.mkdir(exist_ok=True)
 
-    # Model yükle
-    print("\n📦 Model yükleniyor...")
+    # Model yukle
+    print("\nModel yukleniyor...")
     model = load_model(args.checkpoint)
 
-    # Transform
-    from torchvision import transforms
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    all_results = []
+    all_labels = []
+    all_probs = []
+    all_sources = []
     dataset_dir = Path(__file__).parent.parent / "dataset"
 
-    # Test seti
-    if not args.jury_only:
-        print("\n📊 Test seti değerlendiriliyor...")
+    #  Harici dataset benchmark 
+    if args.external:
+        ext_dir = Path(args.external)
+        if not ext_dir.exists():
+            print(f"Harici dataset bulunamadi: {ext_dir}")
+            return
+
+        print(f"\nHarici dataset degerlendiriliyor: {ext_dir}")
+        labels, probs, sources = batch_evaluate(
+            model, ext_dir, split="val", source_name=ext_dir.name,
+            use_tta=args.tta, tta_n=args.tta_n
+        )
+        if len(labels) > 0:
+            all_labels = labels
+            all_probs = probs
+            all_sources = sources
+            print(f"  {ext_dir.name}: {len(labels)} gorsel")
+    else:
+        #  Test seti 
+        print("\nTest seti degerlendiriliyor (DataLoader batch)...")
         test_dir = dataset_dir / "faces_split" / "test"
         if test_dir.exists():
-            for label_name, label_id in [("real", 0), ("fake", 1)]:
-                label_dir = test_dir / label_name
-                if label_dir.exists():
-                    results = evaluate_dataset(model, label_dir, transform, label_id, "test")
-                    all_results.extend(results)
-                    print(f"  {label_name}: {len(results)} görsel")
+            labels, probs, sources = batch_evaluate(
+                model, test_dir, split="val", source_name="test",
+                use_tta=args.tta, tta_n=args.tta_n
+            )
+            if len(labels) > 0:
+                all_labels.extend(labels)
+                all_probs.extend(probs)
+                all_sources.extend(sources)
+                n_real = (labels == 0).sum()
+                n_fake = (labels == 1).sum()
+                print(f"  test: {n_real} REAL + {n_fake} FAKE = {len(labels)}")
 
-    # Jury seti
-    print("\n📊 Jury seti değerlendiriliyor...")
-    jury_dir = dataset_dir / "jury_test"
-    if jury_dir.exists():
-        jury_results = []
-        for label_name, label_id in [("real", 0), ("fake", 1)]:
-            label_dir = jury_dir / label_name
-            if label_dir.exists():
-                results = evaluate_dataset(model, label_dir, transform, label_id, "jury")
-                jury_results.extend(results)
-                all_results.extend(results)
-                print(f"  jury/{label_name}: {len(results)} görsel")
-
-    if not all_results:
-        print("❌ Değerlendirilecek veri bulunamadı!")
+    if len(all_labels) == 0:
+        print(" Degerlendirilecek veri bulunamadi!")
         return
 
-    # Metrikleri hesapla
-    print("\n📈 Metrikler hesaplanıyor...")
-    y_true = np.array([r["true_label"] for r in all_results])
-    y_scores = np.array([r["fake_prob"] for r in all_results])
-    y_pred = np.array([r["pred"] for r in all_results])
+    all_labels = np.array(all_labels) if not isinstance(all_labels, np.ndarray) else all_labels
+    all_probs = np.array(all_probs) if not isinstance(all_probs, np.ndarray) else all_probs
+
+    # FAKE olasiliklari
+    y_true = all_labels
+    y_scores = all_probs[:, 1]
+
+    #  Metrikleri hesapla 
+    print("\n Metrikler hesaplaniyor...")
 
     auc = roc_auc_score(y_true, y_scores)
-    eer, eer_threshold = compute_eer(y_true, y_scores)
-    ece = compute_ece(y_true, y_scores)
-    fpr_95 = compute_fpr_at_tpr(y_true, y_scores, 0.95)
-    f1 = f1_score(y_true, y_pred, average="macro")
-    cm = confusion_matrix(y_true, y_pred).tolist()
 
-    # Per-source accuracy
+    # Optimal threshold (Youden's J)
+    optimal_threshold, j_score = compute_optimal_threshold(y_true, y_scores)
+    y_pred_optimal = (y_scores >= optimal_threshold).astype(int)
+
+    # Sabit 0.5 threshold (karsilastirma)
+    y_pred_fixed = (y_scores >= 0.5).astype(int)
+
+    # EER
+    eer, eer_threshold = compute_eer(y_true, y_scores)
+
+    # ECE
+    ece = compute_ece(y_true, y_scores)
+
+    # FPR@95TPR
+    fpr_95, fpr_95_threshold = compute_fpr_at_tpr(y_true, y_scores, 0.95)
+
+    # F1 (optimal threshold ile)
+    f1_optimal = f1_score(y_true, y_pred_optimal, average="macro")
+    f1_fixed = f1_score(y_true, y_pred_fixed, average="macro")
+
+    # Confusion matrix
+    cm_optimal = confusion_matrix(y_true, y_pred_optimal).tolist()
+    cm_fixed = confusion_matrix(y_true, y_pred_fixed).tolist()
+
+    # Per-source accuracy (optimal threshold)
     source_metrics = defaultdict(lambda: {"correct": 0, "total": 0, "fp": 0, "fn": 0})
-    for r in all_results:
-        src = r["source"]
+    for i in range(len(all_labels)):
+        src = all_sources[i] if i < len(all_sources) else "unknown"
         source_metrics[src]["total"] += 1
-        if r["pred"] == r["true_label"]:
+        if y_pred_optimal[i] == y_true[i]:
             source_metrics[src]["correct"] += 1
-        elif r["true_label"] == 0 and r["pred"] == 1:
+        elif y_true[i] == 0 and y_pred_optimal[i] == 1:
             source_metrics[src]["fp"] += 1
-            # FP görselini kopyala
-            src_file = Path(__file__).parent.parent / "dataset" / "faces_split" / "test" / "real" / r["file"]
-            if src_file.exists():
-                shutil.copy2(src_file, fp_dir / r["file"])
-        elif r["true_label"] == 1 and r["pred"] == 0:
+        elif y_true[i] == 1 and y_pred_optimal[i] == 0:
             source_metrics[src]["fn"] += 1
 
     per_source = {}
@@ -316,41 +419,67 @@ def main():
             "total": m["total"],
         }
 
-    # Latency
-    print("\n⏱️ Latency ölçülüyor...")
-    latency = measure_latency(model, transform)
+    # Olasilik dagilimi
+    real_mask = y_true == 0
+    fake_mask = y_true == 1
+    prob_distribution = {
+        "real_mean": float(y_scores[real_mask].mean()) if real_mask.any() else 0,
+        "real_std": float(y_scores[real_mask].std()) if real_mask.any() else 0,
+        "fake_mean": float(y_scores[fake_mask].mean()) if fake_mask.any() else 0,
+        "fake_std": float(y_scores[fake_mask].std()) if fake_mask.any() else 0,
+    }
 
-    # Sonuçları kaydet
+    # Latency
+    print("\n Latency olculuyor...")
+    latency = measure_latency(model)
+
+    #  Sonuclari kaydet 
+    # Cikti dizini (external vs normal)
+    if args.external:
+        ext_name = Path(args.external).name
+        out_dir = OUTPUT_DIR / "external" / ext_name
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = OUTPUT_DIR
+
     metrics = {
         "roc_auc": round(auc, 4),
         "eer": round(eer, 4),
         "eer_threshold": round(eer_threshold, 4),
+        "optimal_threshold": round(optimal_threshold, 4),
+        "youden_j": round(j_score, 4),
         "ece": round(ece, 4),
         "fpr_at_95tpr": round(fpr_95, 4),
-        "macro_f1": round(f1, 4),
-        "confusion_matrix": cm,
+        "fpr_at_95tpr_threshold": round(fpr_95_threshold, 4),
+        "accuracy_optimal": round((y_pred_optimal == y_true).mean(), 4),
+        "accuracy_fixed_05": round((y_pred_fixed == y_true).mean(), 4),
+        "macro_f1_optimal": round(f1_optimal, 4),
+        "macro_f1_fixed_05": round(f1_fixed, 4),
+        "confusion_matrix_optimal": cm_optimal,
+        "confusion_matrix_fixed_05": cm_fixed,
         "per_source": per_source,
+        "probability_distribution": prob_distribution,
         "latency": latency,
-        "total_evaluated": len(all_results),
+        "total_evaluated": len(all_labels),
+        "n_real": int(real_mask.sum()),
+        "n_fake": int(fake_mask.sum()),
         "fp_total": sum(m["fp"] for m in source_metrics.values()),
         "fn_total": sum(m["fn"] for m in source_metrics.values()),
     }
 
-    # Brier Score & Temperature Scaling (G5)
-    if HAS_CALIBRATION:
+    # Brier Score & Temperature Scaling (G5)  sadece normal evaluation icin
+    if HAS_CALIBRATION and not args.external:
         brier = compute_brier_score(y_true, y_scores)
         metrics["brier_score"] = round(brier, 4)
         print(f"  Brier Score: {brier:.4f}")
 
-        # Reliability Diagram
         rel_path = generate_reliability_diagram(
             y_true, y_scores,
-            output_path=OUTPUT_DIR / "reliability_diagram.png"
+            output_path=out_dir / "reliability_diagram.png"
         )
         if rel_path:
             metrics["reliability_diagram"] = str(rel_path)
 
-        # Temperature Scaling (validation set üzerinde)
         try:
             from core.data_pipeline import get_dataloaders
             _, val_loader, _ = get_dataloaders(batch_size=model_cfg.BATCH_SIZE)
@@ -358,58 +487,104 @@ def main():
             optimal_t = calibrator.fit(val_loader, model, DEVICE)
             metrics["temperature"] = round(optimal_t, 4)
 
-            # Kalibre edilmiş ECE
             calibrated_probs = torch.softmax(
                 torch.tensor(np.column_stack([1 - y_scores, y_scores])) / optimal_t, dim=1
             ).numpy()[:, 1]
             calibrated_ece = compute_ece_v2(y_true, calibrated_probs)
             metrics["calibrated_ece"] = round(calibrated_ece, 4)
             print(f"  Calibrated ECE: {calibrated_ece:.4f} (T={optimal_t:.4f})")
-
-            # Kalibrasyon ağırlıklarını kaydet
             calibrator.save()
         except Exception as e:
-            print(f"  ⚠️ Temperature Scaling hatası: {e}")
+            print(f"   Temperature Scaling hatasi: {e}")
 
-        # ONNX Export Testi
         try:
             onnx_results = test_onnx_export(model)
             metrics["onnx_export"] = onnx_results
         except Exception as e:
-            print(f"  ⚠️ ONNX export hatası: {e}")
+            print(f"   ONNX export hatasi: {e}")
 
-    metrics_path = OUTPUT_DIR / "metrics.json"
+    # JSON kaydet
+    metrics_path = out_dir / "metrics.json"
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
 
-    # Rapor yazdır
+    # ROC Curve gorsel
+    roc_path = save_roc_curve(
+        y_true, y_scores, out_dir / "roc_curve.png",
+        title=f"ROC Curve (AUC={auc:.4f})"
+    )
+    if roc_path:
+        metrics["roc_curve"] = roc_path
+
+    # Confusion matrix gorsel
+    cm_arr = np.array(cm_optimal)
+    cm_path = save_confusion_matrix_plot(cm_arr, out_dir / "confusion_matrix.png")
+    if cm_path:
+        metrics["confusion_matrix_plot"] = cm_path
+
+    # MLflow loglama
+    if HAS_MLFLOW and not args.external:
+        try:
+            mlflow.set_tracking_uri(f"file:{paths.MLRUNS_DIR}")
+            mlflow.set_experiment("deepfake-v5-evaluation")
+            with mlflow.start_run(run_name="full_evaluation"):
+                mlflow.log_metrics({
+                    "eval_auc": auc,
+                    "eval_eer": eer,
+                    "eval_ece": ece,
+                    "eval_f1_optimal": f1_optimal,
+                    "eval_accuracy_optimal": float((y_pred_optimal == y_true).mean()),
+                    "eval_optimal_threshold": optimal_threshold,
+                })
+                if metrics_path.exists():
+                    mlflow.log_artifact(str(metrics_path))
+                if roc_path and Path(roc_path).exists():
+                    mlflow.log_artifact(roc_path)
+        except Exception as e:
+            print(f"   MLflow hatasi: {e}")
+
+    #  Rapor yazdir 
     print(f"\n{'=' * 60}")
-    print(f"📊 DEĞERLENDİRME SONUÇLARI")
+    print(f" DEGERLENDIRME SONUCLARI")
     print(f"{'=' * 60}")
-    print(f"  ROC-AUC:       {auc:.4f}")
-    print(f"  EER:           {eer:.4f} (threshold={eer_threshold:.4f})")
-    print(f"  ECE:           {ece:.4f}")
-    print(f"  FPR@95TPR:     {fpr_95:.4f}")
-    print(f"  Macro F1:      {f1:.4f}")
-    print(f"  False Positive: {metrics['fp_total']}")
-    print(f"  False Negative: {metrics['fn_total']}")
-    print(f"  Latency:       {latency['mean_ms']:.1f}ms ({latency['device']})")
-    if 'brier_score' in metrics:
-        print(f"  Brier Score:   {metrics['brier_score']:.4f}")
-    if 'temperature' in metrics:
-        print(f"  Temperature:   {metrics['temperature']:.4f}")
-    if 'calibrated_ece' in metrics:
-        print(f"  Calibrated ECE:{metrics['calibrated_ece']:.4f} "
-              f"({'✅ < 5%' if metrics['calibrated_ece'] < 0.05 else '⚠️ > 5%'})")
+    print(f"  ROC-AUC:           {auc:.4f}")
+    print(f"  EER:               {eer:.4f} (threshold={eer_threshold:.4f})")
+    print(f"  ECE:               {ece:.4f}")
+    print(f"  FPR@95TPR:         {fpr_95:.4f} (threshold={fpr_95_threshold:.4f})")
+    print(f"")
+    print(f"  Optimal Threshold: {optimal_threshold:.4f} (Youden J={j_score:.4f})")
+    print(f"  Accuracy (opt):    {(y_pred_optimal == y_true).mean():.4f}")
+    print(f"  Macro F1 (opt):    {f1_optimal:.4f}")
+    print(f"  Accuracy (0.5):    {(y_pred_fixed == y_true).mean():.4f}")
+    print(f"  Macro F1 (0.5):    {f1_fixed:.4f}")
+    print(f"")
+    print(f"  REAL: {int(real_mask.sum()):,} gorsel | FAKE: {int(fake_mask.sum()):,} gorsel")
+    print(f"  FP: {metrics['fp_total']:,} | FN: {metrics['fn_total']:,}")
+    print(f"  Latency: {latency['mean_ms']:.1f}ms ({latency['device']})")
+    print(f"")
+    print(f"  Olasilik Dagilimi:")
+    print(f"    REAL: {prob_distribution['real_mean']:.4f}  {prob_distribution['real_std']:.4f}")
+    print(f"    FAKE: {prob_distribution['fake_mean']:.4f}  {prob_distribution['fake_std']:.4f}")
+
+    if "brier_score" in metrics:
+        print(f"  Brier Score:       {metrics['brier_score']:.4f}")
+    if "temperature" in metrics:
+        print(f"  Temperature:       {metrics['temperature']:.4f}")
+    if "calibrated_ece" in metrics:
+        status = " < 5%" if metrics["calibrated_ece"] < 0.05 else " > 5%"
+        print(f"  Calibrated ECE:    {metrics['calibrated_ece']:.4f} ({status})")
+
     print(f"\n  Per-Source:")
     for src, m in sorted(per_source.items()):
         print(f"    {src}: acc={m['accuracy']:.3f} FP={m['fp_count']} FN={m['fn_count']} (n={m['total']})")
-    print(f"\n  📂 Sonuçlar: {metrics_path}")
-    print(f"  📂 FP analiz: {fp_dir}")
-    if 'reliability_diagram' in metrics:
-        print(f"  📂 Reliability Diagram: {metrics['reliability_diagram']}")
+
+    print(f"\n   Sonuclar: {metrics_path}")
+    if roc_path:
+        print(f"   ROC Curve: {roc_path}")
+    if cm_path:
+        print(f"   Confusion Matrix: {cm_path}")
     print(f"{'=' * 60}")
-    print("✅ GÖREV_5_TAMAMLANDI")
+    print(" DEGERLENDIRME_TAMAMLANDI")
 
 
 if __name__ == "__main__":

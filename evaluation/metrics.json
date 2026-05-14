@@ -1,48 +1,66 @@
 {
-  "roc_auc": 0.5,
-  "eer": 0.5,
-  "eer_threshold": Infinity,
-  "ece": 0.0009,
-  "fpr_at_95tpr": 1.0,
-  "macro_f1": 0.3329,
-  "confusion_matrix": [
+  "roc_auc": 0.9606,
+  "eer": 0.1036,
+  "eer_threshold": 0.4129,
+  "optimal_threshold": 0.4423,
+  "youden_j": 0.798,
+  "ece": 0.2705,
+  "fpr_at_95tpr": 0.2463,
+  "fpr_at_95tpr_threshold": 0.3545,
+  "accuracy_optimal": 0.899,
+  "accuracy_fixed_05": 0.8888,
+  "macro_f1_optimal": 0.8989,
+  "macro_f1_fixed_05": 0.8879,
+  "confusion_matrix_optimal": [
     [
-      31269,
-      0
+      27498,
+      2271
     ],
     [
-      31386,
-      0
+      3756,
+      26130
+    ]
+  ],
+  "confusion_matrix_fixed_05": [
+    [
+      29168,
+      601
+    ],
+    [
+      6031,
+      23855
     ]
   ],
   "per_source": {
     "test": {
-      "accuracy": 0.4990193613276339,
-      "fp_count": 0,
-      "fn_count": 29886,
+      "accuracy": 0.8989690721649485,
+      "fp_count": 2271,
+      "fn_count": 3756,
       "total": 59655
-    },
-    "jury": {
-      "accuracy": 0.5,
-      "fp_count": 0,
-      "fn_count": 1500,
-      "total": 3000
     }
   },
+  "probability_distribution": {
+    "real_mean": 0.32333093881607056,
+    "real_std": 0.0642722100019455,
+    "fake_mean": 0.5509087443351746,
+    "fake_std": 0.08555508404970169
+  },
   "latency": {
-    "mean_ms": 39.32422200028668,
-    "median_ms": 38.44614999979967,
-    "p95_ms": 48.87958500366949,
+    "mean_ms": 39.931433999990986,
+    "median_ms": 39.09439999915776,
+    "p95_ms": 45.1029800003198,
     "device": "cuda",
     "n_runs": 50
   },
-  "total_evaluated": 62655,
-  "fp_total": 0,
-  "fn_total": 31386,
-  "brier_score": 0.25,
+  "total_evaluated": 59655,
+  "n_real": 29769,
+  "n_fake": 29886,
+  "fp_total": 2271,
+  "fn_total": 3756,
+  "brier_score": 0.1589,
   "reliability_diagram": "C:\\Users\\seydieryilmaz\\Desktop\\DeepfakeULTRA\\evaluation\\reliability_diagram.png",
   "temperature": 1.4607,
-  "calibrated_ece": 0.0009,
+  "calibrated_ece": 0.3523,
   "onnx_export": {
     "success": false,
     "path": "C:\\Users\\seydieryilmaz\\Desktop\\DeepfakeULTRA\\models\\model.onnx",
