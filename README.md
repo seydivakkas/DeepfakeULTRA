@@ -718,13 +718,15 @@ ext_mean_auc = 5 harici dataset ortalaması (genelleme yeteneği)
 
 | Bileşen | Minimum | Önerilen |
 |---|---|---|
-| **İşletim Sistemi** | Windows 10 / Ubuntu 20.04 | Windows 11 / Ubuntu 22.04 |
+| **İşletim Sistemi** | Windows 10 / Ubuntu 20.04 / macOS 13+ | Windows 11 / Ubuntu 22.04 / macOS 14+ |
 | **Python** | 3.11+ | 3.14+ |
-| **GPU** | CUDA destekli NVIDIA GPU | RTX 4070+ (8GB+ VRAM) |
+| **GPU** | CUDA destekli NVIDIA GPU (veya CPU) | RTX 4070+ (8GB+ VRAM) |
 | **VRAM** | 4GB (sadece inference) | 8GB (eğitim + inference) |
 | **RAM** | 16GB | 32GB |
 | **Disk** | 10GB (model + kod) | 50GB+ (datasetler dahil) |
-| **CUDA** | 11.8+ | 12.x |
+| **CUDA** | 11.8+ (macOS'ta gerekli değil) | 12.x |
+
+> **macOS Notu:** Apple Silicon (M1/M2/M3/M4) üzerinde CPU modunda çalışır. CUDA gerekmez.
 
 ### Adım 1: Proje Kurulumu
 
@@ -772,17 +774,27 @@ Beklenen çıktı:
 CUDA: True, GPU: NVIDIA GeForce RTX 4070
 ```
 
-### Adım 4: Model Dosyası
+### Adım 4: Pretrained Model İndir
+
+Model ağırlıkları büyük boyutları nedeniyle Git reposuna dahil değildir. GitHub Releases'tan otomatik indirilir:
 
 ```bash
-# Model dosyasını models/ dizinine yerleştir
-# (eğitim ile üretilmiş veya paylaşılmış .pth dosyası)
-models/
-├── best_model.pth                  # Ana model (~60MB)
-└── best_model_generalized.pth      # Domain-robust model (~60MB)
+# Otomatik indirme (önerilen)
+python download_model.py
+
+# Belirli bir model
+python download_model.py --model best_run5_forensic.pth
+
+# Mevcut dosyaları listele
+python download_model.py --list
 ```
 
-> **Not:** Model dosyaları `.gitignore` ile hariç tutulur. Eğitim için `python scripts/finetune_generalization.py` çalıştırın.
+| Model | Boyut | Açıklama |
+|---|---|---|
+| `best_run5_forensic.pth` | ~247 MB | Ana forensik model (önerilen) |
+| `best_model.pth` | ~83 MB | Hafif model |
+
+> **Manuel İndirme:** [GitHub Releases](https://github.com/seydivakkas/DeepfakeULTRA/releases) sayfasından `.pth` dosyalarını indirip `models/` klasörüne yerleştirin.
 
 ### Adım 5: Çalıştır
 
