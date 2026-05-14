@@ -2,8 +2,15 @@
 Deepfake Detection System v3.0 — 8 Sekmeli Ana UI
 python app.py → http://localhost:7860
 """
-import sys, os
+import sys, os, warnings, socket
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Bilinen 3. parti kutuphane uyarilarini sustur
+warnings.filterwarnings("ignore", message="websockets.legacy is deprecated")
+warnings.filterwarnings("ignore", message="websockets.server.WebSocketServerProtocol is deprecated")
+warnings.filterwarnings("ignore", message=".*asyncio.iscoroutinefunction.*is deprecated")
+warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed event loop")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="uvicorn")
 
 import gradio as gr
 from config import VERSION, SYSTEM_NAME
@@ -552,10 +559,26 @@ def create_app():
     return demo
 
 
+def _find_free_port(preferred=7860):
+    """Port musaitse preferred, degilse bos port bul."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("0.0.0.0", preferred))
+        sock.close()
+        return preferred
+    except OSError:
+        print(f"[!] Port {preferred} kullaniliyor, alternatif port araniyor...")
+        sock.bind(("0.0.0.0", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        return port
+
+
 if __name__ == "__main__":
+    port = _find_free_port(7860)
     demo = create_app()
     demo.launch(
-        server_name="0.0.0.0", server_port=7860, share=False,
+        server_name="0.0.0.0", server_port=port, share=False,
         css=CSS, theme=gr.themes.Base(
             primary_hue="cyan",
             neutral_hue="gray",
