@@ -145,7 +145,10 @@ def _clip_photo_check(image: np.ndarray) -> tuple:
         "a cartoon drawing illustration caricature of a face",
     ]
 
-    inputs = _clip_processor(text=texts, images=pil_image, return_tensors="pt")
+    inputs = _clip_processor(
+        text=texts, images=pil_image, return_tensors="pt",
+        padding=True, truncation=True,
+    )
     with torch.no_grad():
         outputs = _clip_model(**inputs)
     probs = outputs.logits_per_image.softmax(dim=1)[0]
