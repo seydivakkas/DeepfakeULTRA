@@ -376,17 +376,42 @@ def handle_single_analysis(image, tta_count, source_platform="original"):
         verdict_text = (f"### {v_icon} {v} ({display_prob:.4f})\n"
                         f"Guven: %{display_prob*100:.1f}{source_note}")
 
-    metrics = (f"| Metrik | Deger |\n|---|---|\n"
-               f"| Verdict | {r['verdict']} |\n"
-               f"| Fake Probability | {r['fake_prob']:.4f} |\n"
-               f"| Real Probability | {r['real_prob']:.4f} |\n"
-               f"| Calibrated | No |\n"
-               f"{quality_info}"
-               f"| GradCAM++ Score | {r['gradcam_score']:.4f} |\n"
-               f"| Counterfactual Prob | {r['counterfactual_prob']:.4f} |\n"
-               f"| TTA Augmentations | {len(r.get('tta_individual',[]))} |\n"
-               f"| TTA Std Dev | {r['tta_std']:.4f} |\n"
-               f"| TTA Individual | {r.get('tta_individual',[])} |")
+    # Foto filtre bilgisi
+    pf = r.get("photo_filter", {})
+    pf_rows = []
+    if pf:
+        pf_rows.append("| **--- Fotograf Filtresi ---** |  |")
+        pf_rows.append(f"| Method | {pf.get('method', '-')} |")
+        pf_rows.append(f"| Photo Score (stat) | {pf.get('photo_score', '-')} |")
+        pf_rows.append(f"| Color Ratio | {pf.get('color_ratio', '-')} |")
+        pf_rows.append(f"| Sharp Ratio | {pf.get('sharp_ratio', '-')} |")
+        pf_rows.append(f"| Noise Std | {pf.get('noise_std', '-')} |")
+        pf_rows.append(f"| Flat Ratio | {pf.get('flat_ratio', '-')} |")
+        if "clip_score" in pf:
+            pf_rows.append(f"| CLIP Score | {pf.get('clip_score', '-')} |")
+            pf_rows.append(f"| CLIP Label | {pf.get('clip_label', '-')} |")
+            pf_rows.append(f"| Combined Score | {pf.get('combined_score', '-')} |")
+
+    m_rows = [
+        "| Metrik | Deger |", "|---|---|",
+        f"| Verdict | {r['verdict']} |",
+        f"| Fake Probability | {r['fake_prob']:.4f} |",
+        f"| Real Probability | {r['real_prob']:.4f} |",
+        "| Calibrated | No |",
+    ]
+    if quality_info:
+        for line in quality_info.strip().split("\n"):
+            if line.strip():
+                m_rows.append(line)
+    m_rows.extend([
+        f"| GradCAM++ Score | {r['gradcam_score']:.4f} |",
+        f"| Counterfactual Prob | {r['counterfactual_prob']:.4f} |",
+        f"| TTA Augmentations | {len(r.get('tta_individual',[]))} |",
+        f"| TTA Std Dev | {r['tta_std']:.4f} |",
+        f"| TTA Individual | {r.get('tta_individual',[])} |",
+    ])
+    m_rows.extend(pf_rows)
+    metrics = "\n".join(m_rows)
 
     # Quality warning banner
     quality_warning = ""

@@ -76,6 +76,7 @@ def analyze_image(
         "fusion_weights": {"rgb": 50.0, "freq": 49.0, "geo": 1.0},
         "watermarked_image": None,
         "original_image": image,
+        "photo_filter": base_result.get("photo_filter", {}),
     }
 
     # 2. TTA

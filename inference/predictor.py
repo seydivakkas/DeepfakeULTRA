@@ -93,8 +93,10 @@ def _statistical_photo_check(image: np.ndarray) -> tuple:
             noise_vals.append(np.std(block))
     noise_std = np.mean(noise_vals) if noise_vals else 0
 
-    # 4. Duz renk bolgesi orani
-    flat_mask = (grad_x[:, :-1] < 3) & (grad_y[:-1, :] < 3)
+    # 4. Duz renk bolgesi orani — grad_x (h,w-1) ve grad_y (h-1,w) boyutlarini esle
+    min_h = min(grad_x.shape[0], grad_y.shape[0])
+    min_w = min(grad_x.shape[1], grad_y.shape[1])
+    flat_mask = (grad_x[:min_h, :min_w] < 3) & (grad_y[:min_h, :min_w] < 3)
     flat_ratio = np.mean(flat_mask)
 
     score = (
@@ -301,6 +303,7 @@ class DeepfakePredictor:
             "fake_subtype": None,
             "subtype_confidence": None,
             "subtype_method": None,
+            "photo_filter": photo_details,
         }
 
         # Asama 2: FAKE ise alt-tip siniflandirma
