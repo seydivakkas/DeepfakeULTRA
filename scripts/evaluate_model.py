@@ -36,12 +36,13 @@ except ImportError:
 
 OUTPUT_DIR = Path(__file__).parent.parent / "evaluation"
 
-# Kalibrasyon modulu (G5)
+# Kalibrasyon modulu (G5 — Platt/Vector/Temperature + Auto)
 try:
     from core.calibration import (
-        TemperatureScaling, compute_brier_score,
-        generate_reliability_diagram, test_onnx_export,
-        compute_ece as compute_ece_v2,
+        TemperatureScaling, PlattScaling, VectorScaling,
+        auto_calibrate, load_calibrator,
+        compute_brier_score, generate_reliability_diagram,
+        test_onnx_export, compute_ece as compute_ece_v2,
     )
     HAS_CALIBRATION = True
 except ImportError:
@@ -80,8 +81,12 @@ def load_model(checkpoint_path=None):
 # DATALOADER TABANLI BATCH INFERENCE
 # 
 def batch_evaluate(model, data_dir: Path, split: str = "val", source_name: str = "test",
-                   use_tta: bool = False, tta_n: int = 10):
-    """DataLoader ile batch inference  egitimle ayni pipeline."""
+                   use_tta: bool = False, tta_n: int = 10, collect_logits: bool = False):
+    """DataLoader ile batch inference  egitimle ayni pipeline.
+    
+    collect_logits=True ise hem olasılıklar hem logit'ler döndürülür
+    (kalibrasyon için gerekli).
+    """
     from core.data_pipeline import DeepfakeDataset
     from tqdm import tqdm
 
@@ -98,7 +103,7 @@ def batch_evaluate(model, data_dir: Path, split: str = "val", source_name: str =
     ds = DeepfakeDataset(str(data_dir), split=split, source_tag=source_name)
     if len(ds) == 0:
         print(f"   {data_dir} dizininde veri bulunamadi!")
-        return [], [], []
+        return [], [], [], []
 
     # TTA modunda batch size kucult (N kopya bellekte)
     bs = 32 if use_tta else 64
@@ -109,6 +114,7 @@ def batch_evaluate(model, data_dir: Path, split: str = "val", source_name: str =
     )
 
     all_probs = []
+    all_logits = []
     all_labels = []
     all_sources = []
 
@@ -123,15 +129,24 @@ def batch_evaluate(model, data_dir: Path, split: str = "val", source_name: str =
 
             if tta_predictor:
                 probs = tta_predictor.predict_batch(rgb, freq, mesh).cpu().numpy()
+                all_probs.extend(probs)
+                # TTA modunda logit'ler mevcut değil
+                if collect_logits:
+                    all_logits.extend(probs)  # TTA'da logit yok, prob kullan
             else:
                 logits = model(rgb, freq, mesh)
                 probs = torch.softmax(logits, dim=1).cpu().numpy()
+                all_probs.extend(probs)
+                if collect_logits:
+                    all_logits.extend(logits.cpu().numpy())
 
-            all_probs.extend(probs)
             all_labels.extend(labels.numpy())
             all_sources.extend([source_name] * labels.size(0))
 
-    return np.array(all_labels), np.array(all_probs), all_sources
+    labels_out = np.array(all_labels)
+    probs_out = np.array(all_probs)
+    logits_out = np.array(all_logits) if collect_logits and all_logits else None
+    return labels_out, probs_out, all_sources, logits_out
 
 
 # 
@@ -322,6 +337,7 @@ def main():
     all_labels = []
     all_probs = []
     all_sources = []
+    all_logits_raw = []  # Kalibrasyon için ham logit'ler
     dataset_dir = Path(__file__).parent.parent / "dataset"
 
     #  Harici dataset benchmark 
@@ -332,28 +348,32 @@ def main():
             return
 
         print(f"\nHarici dataset degerlendiriliyor: {ext_dir}")
-        labels, probs, sources = batch_evaluate(
+        labels, probs, sources, logits_raw = batch_evaluate(
             model, ext_dir, split="val", source_name=ext_dir.name,
-            use_tta=args.tta, tta_n=args.tta_n
+            use_tta=args.tta, tta_n=args.tta_n, collect_logits=True
         )
         if len(labels) > 0:
             all_labels = labels
             all_probs = probs
             all_sources = sources
+            if logits_raw is not None:
+                all_logits_raw.extend(logits_raw)
             print(f"  {ext_dir.name}: {len(labels)} gorsel")
     else:
         #  Test seti 
         print("\nTest seti degerlendiriliyor (DataLoader batch)...")
-        test_dir = dataset_dir / "faces_split" / "test"
+        test_dir = dataset_dir / "faces_split_v2" / "test"
         if test_dir.exists():
-            labels, probs, sources = batch_evaluate(
+            labels, probs, sources, logits_raw = batch_evaluate(
                 model, test_dir, split="val", source_name="test",
-                use_tta=args.tta, tta_n=args.tta_n
+                use_tta=args.tta, tta_n=args.tta_n, collect_logits=True
             )
             if len(labels) > 0:
                 all_labels.extend(labels)
                 all_probs.extend(probs)
                 all_sources.extend(sources)
+                if logits_raw is not None:
+                    all_logits_raw.extend(logits_raw)
                 n_real = (labels == 0).sum()
                 n_fake = (labels == 1).sum()
                 print(f"  test: {n_real} REAL + {n_fake} FAKE = {len(labels)}")
@@ -467,35 +487,78 @@ def main():
         "fn_total": sum(m["fn"] for m in source_metrics.values()),
     }
 
-    # Brier Score & Temperature Scaling (G5)  sadece normal evaluation icin
+    # Brier Score & Kalibrasyon (G5 — Auto-Calibrate) sadece normal evaluation icin
     if HAS_CALIBRATION and not args.external:
         brier = compute_brier_score(y_true, y_scores)
         metrics["brier_score"] = round(brier, 4)
         print(f"  Brier Score: {brier:.4f}")
 
+        # Ham (kalibre edilmemiş) reliability diagram
         rel_path = generate_reliability_diagram(
             y_true, y_scores,
-            output_path=out_dir / "reliability_diagram.png"
+            output_path=out_dir / "reliability_diagram.png",
+            title="Reliability Diagram (Uncalibrated)",
         )
         if rel_path:
             metrics["reliability_diagram"] = str(rel_path)
 
+        # Auto-Calibrate: Logit'ler üzerinden en iyi yöntemi seç
         try:
             from core.data_pipeline import get_dataloaders
             _, val_loader, _ = get_dataloaders(batch_size=model_cfg.BATCH_SIZE)
-            calibrator = TemperatureScaling()
-            optimal_t = calibrator.fit(val_loader, model, DEVICE)
-            metrics["temperature"] = round(optimal_t, 4)
+            best_method, calibrator, cal_results = auto_calibrate(
+                val_loader, model, DEVICE
+            )
+            metrics["calibration_method"] = best_method
 
-            calibrated_probs = torch.softmax(
-                torch.tensor(np.column_stack([1 - y_scores, y_scores])) / optimal_t, dim=1
-            ).numpy()[:, 1]
-            calibrated_ece = compute_ece_v2(y_true, calibrated_probs)
-            metrics["calibrated_ece"] = round(calibrated_ece, 4)
-            print(f"  Calibrated ECE: {calibrated_ece:.4f} (T={optimal_t:.4f})")
-            calibrator.save()
+            # Ham (kalibre edilmemiş) ECE
+            uncal_ece = compute_ece_v2(y_true, y_scores)
+            metrics["ece"] = round(uncal_ece, 4)
+
+            if calibrator is not None:
+                # Test logit'lerini kullanarak kalibre edilmiş ECE hesapla
+                # KRİTİK: Logit'ler üzerinden kalibrasyon — çift softmax bug'ı düzeltildi
+                if len(all_logits_raw) > 0:
+                    test_logits_t = torch.tensor(np.array(all_logits_raw), dtype=torch.float32)
+                    cal_probs = calibrator.calibrate(test_logits_t).numpy()[:, 1]
+                else:
+                    # Logit yoksa (TTA vs), softmax'tan geri dönüştür (yaklaşık)
+                    approx_logits = np.log(np.clip(
+                        np.column_stack([1 - y_scores, y_scores]), 1e-7, 1.0
+                    ))
+                    test_logits_t = torch.tensor(approx_logits, dtype=torch.float32)
+                    cal_probs = calibrator.calibrate(test_logits_t).numpy()[:, 1]
+
+                calibrated_ece = compute_ece_v2(y_true, cal_probs)
+                calibrated_brier = compute_brier_score(y_true, cal_probs)
+                metrics["calibrated_ece"] = round(calibrated_ece, 4)
+                metrics["calibrated_brier"] = round(calibrated_brier, 4)
+
+                # Yöntem-spesifik parametreleri kaydet
+                if best_method in cal_results:
+                    for k, v in cal_results[best_method].items():
+                        if k not in ("calibrator", "ece", "brier"):
+                            metrics[f"calibration_{k}"] = v
+
+                # Kalibre edilmiş reliability diagram
+                generate_reliability_diagram(
+                    y_true, cal_probs,
+                    output_path=out_dir / "reliability_diagram_calibrated.png",
+                    title=f"Reliability Diagram ({best_method})",
+                )
+
+                ece_improvement = (uncal_ece - calibrated_ece) / uncal_ece * 100
+                print(f"  Calibrated ECE: {calibrated_ece:.4f} "
+                      f"(iyilesme: {ece_improvement:+.1f}%, yontem: {best_method})")
+
+                calibrator.save()
+            else:
+                print(f"  ⚠️ Hiçbir kalibrasyon yöntemi iyileşme sağlamadı")
+
         except Exception as e:
-            print(f"   Temperature Scaling hatasi: {e}")
+            print(f"   Kalibrasyon hatasi: {e}")
+            import traceback
+            traceback.print_exc()
 
         try:
             onnx_results = test_onnx_export(model)
@@ -568,11 +631,13 @@ def main():
 
     if "brier_score" in metrics:
         print(f"  Brier Score:       {metrics['brier_score']:.4f}")
-    if "temperature" in metrics:
-        print(f"  Temperature:       {metrics['temperature']:.4f}")
+    if "calibration_method" in metrics:
+        print(f"  Cal. Yontem:       {metrics['calibration_method']}")
     if "calibrated_ece" in metrics:
         status = " < 5%" if metrics["calibrated_ece"] < 0.05 else " > 5%"
         print(f"  Calibrated ECE:    {metrics['calibrated_ece']:.4f} ({status})")
+    if "calibrated_brier" in metrics:
+        print(f"  Calibrated Brier:  {metrics['calibrated_brier']:.4f}")
 
     print(f"\n  Per-Source:")
     for src, m in sorted(per_source.items()):

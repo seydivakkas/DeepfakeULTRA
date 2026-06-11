@@ -209,17 +209,64 @@ class DeepfakePredictor:
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
 
-        # Model yukle
+        # Model yükle
         model_path = model_path or str(paths.BEST_MODEL_PATH)
+        self._load_model(model_path)
+        self.current_model_path = model_path
+        self.current_model_type = "original"
+
+        # Kalibrasyon ve threshold yükle
+        self.calibration_temp = 1.0
+        self.optimal_threshold = 0.5
+        self._load_calibration()
+        self._load_threshold()
+
+    def _load_model(self, model_path):
+        """Model ağırlıklarını yükle."""
         if Path(model_path).exists():
-            ckpt = torch.load(model_path, map_location=device, weights_only=False)
+            ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
             state = ckpt.get("model_state_dict", ckpt)
             self.model.load_state_dict(state)
-            print(f"Model yuklendi: {model_path}")
+            print(f"Model yüklendi: {model_path}")
         else:
-            print("Model dosyasi bulunamadi, rastgele agirliklar")
-
+            print("Model dosyası bulunamadı, rastgele ağırlıklar")
         self.model.eval()
+
+    def _load_calibration(self):
+        """Platt scaling temperature yükle."""
+        import json
+        cal_path = paths.CALIBRATION_PATH
+        if cal_path.exists():
+            try:
+                with open(cal_path, "r") as f:
+                    cal = json.load(f)
+                self.calibration_temp = cal.get("temperature", 1.0)
+            except Exception:
+                self.calibration_temp = 1.0
+
+    def _load_threshold(self):
+        """Optimal threshold (Youden J) yükle."""
+        th_path = paths.OPTIMAL_THRESHOLD_PATH
+        if th_path.exists():
+            try:
+                self.optimal_threshold = float(th_path.read_text().strip())
+            except Exception:
+                self.optimal_threshold = 0.5
+
+    def switch_model(self, model_type="original"):
+        """Model değiştir: 'original' veya 'generalized'."""
+        if model_type == "generalized":
+            path = str(paths.GENERALIZED_MODEL_PATH)
+        else:
+            path = str(paths.BEST_MODEL_PATH)
+
+        if not Path(path).exists():
+            return f"❌ Model bulunamadı: {path}"
+
+        self._load_model(path)
+        self.current_model_path = path
+        self.current_model_type = model_type
+        return f"✅ Model değiştirildi: {model_type} ({Path(path).name})"
 
     def preprocess(self, image_input):
         """Goruntuy RGB + DWT + Mesh tensorlerine donustur."""

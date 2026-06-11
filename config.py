@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 # CİHAZ SEÇİMİ
 # ═══════════════════════════════════════════════════════════
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-NUM_WORKERS = min(12, os.cpu_count() or 1)  # ↑ 6→12 (i7-14700HX 20 thread)
+NUM_WORKERS = 12  # 12 — CPU veri yukleme paralelizasyonu
 
 
 # ═══════════════════════════════════════════════════════════
@@ -53,6 +53,9 @@ class PathConfig:
     # Model çıktıları
     MODEL_DIR: Path = field(default=None)
     BEST_MODEL_PATH: Path = field(default=None)
+    GENERALIZED_MODEL_PATH: Path = field(default=None)
+    CALIBRATION_PATH: Path = field(default=None)
+    OPTIMAL_THRESHOLD_PATH: Path = field(default=None)
     ONNX_MODEL_PATH: Path = field(default=None)
     QUANTIZED_MODEL_PATH: Path = field(default=None)
 
@@ -94,7 +97,13 @@ class PathConfig:
         self.FACES_VGGFACE2_DIR = self.FACES_VGGFACE2_DIR or self.FACES_DIR / "vggface2"
 
         self.MODEL_DIR = self.MODEL_DIR or b / "models"
-        self.BEST_MODEL_PATH = self.BEST_MODEL_PATH or self.MODEL_DIR / "best_model.pth"
+        # best_run5_forensic.pth varsa onu kullan, yoksa best_model.pth fallback
+        _forensic = self.MODEL_DIR / "best_run5_forensic.pth"
+        _default = self.MODEL_DIR / "best_model.pth"
+        self.BEST_MODEL_PATH = self.BEST_MODEL_PATH or (_forensic if _forensic.exists() else _default)
+        self.GENERALIZED_MODEL_PATH = self.GENERALIZED_MODEL_PATH or self.MODEL_DIR / "best_model_generalized.pth"
+        self.CALIBRATION_PATH = self.CALIBRATION_PATH or self.MODEL_DIR / "calibration_weights.json"
+        self.OPTIMAL_THRESHOLD_PATH = self.OPTIMAL_THRESHOLD_PATH or self.MODEL_DIR / "optimal_threshold.txt"
         self.ONNX_MODEL_PATH = self.ONNX_MODEL_PATH or self.MODEL_DIR / "model.onnx"
         self.QUANTIZED_MODEL_PATH = self.QUANTIZED_MODEL_PATH or self.MODEL_DIR / "model_quantized.pth"
 
@@ -143,22 +152,22 @@ class ModelConfig:
     # ═══════════════════════════════════════════════════════════
 
     # Temel hiperparametreler
-    LEARNING_RATE: float = 3e-4       # ↑ 1e-4 → 3e-4 (KD yok, daha agresif)
+    LEARNING_RATE: float = 1e-4       # 1e-4 (3e-4 loss patlaması verdi, büyük veri için güvenli)
     WEIGHT_DECAY: float = 1e-4
-    BATCH_SIZE: int = 20              # 20 — RTX 4070 8GB güvenli
+    BATCH_SIZE: int = 40              # 40 — EfficientNet-B4 FP16 unfrozen: 5.7GB/8GB
     EPOCHS: int = 20                  # ↑ 15 → 20 (WeightedRandomSampler unique coverage)
     EARLY_STOPPING_PATIENCE: int = 4  # ↓ 5 → 4 (hızlı karar)
     GRADIENT_CLIP_MAX_NORM: float = 1.0
 
     # Gradient Accumulation (efektif batch = 128)
-    GRADIENT_ACCUMULATION_STEPS: int = 8  # ↑ 4 → 8 (daha stabil gradient)
+    GRADIENT_ACCUMULATION_STEPS: int = 4  # 4 — efektif batch = 40×4 = 160
 
     # Mixed Precision (FP16 — %40 VRAM tasarrufu)
     USE_MIXED_PRECISION: bool = True
 
     # Focal Loss — dengeli veri için optimize
     FOCAL_GAMMA: float = 2.0
-    FOCAL_ALPHA: float = 0.75   # ↑ 0.5 → 0.75 (Hard-negative ağırlıklı)
+    FOCAL_ALPHA: float = 0.50   # ↓ 0.75 → 0.50 (dengeli veri, notr agirlik)
     LABEL_SMOOTHING: float = 0.1  # ↑ 0.05 → 0.1 (generalizasyon)
 
     # Contrastive Learning (Triplet Loss)
@@ -222,6 +231,11 @@ class ModelConfig:
     # Model mimarisi
     RGB_BACKBONE: str = "mobilenet_v3_large"
     FREQ_BACKBONE: str = "mobilenet_v3_large"
+
+    # Backbone tipi secimi (mevcut checkpoint uyumlulugu korunur)
+    # "mobilenet_v3_large" → mevcut (5.5M param, 960-dim)
+    # "efficientnet_b4"    → guclu (19M param, 1792-dim → 960 proj)
+    RGB_BACKBONE_TYPE: str = "efficientnet_b4"
     MESH_INPUT_DIM: int = 1404  # 468 landmarks × 3 (x, y, z)
     MESH_HIDDEN_DIM: int = 256
     MESH_OUTPUT_DIM: int = 128
@@ -341,8 +355,8 @@ notif_cfg = NotificationConfig()
 paths.ensure_dirs()
 
 # Versiyonlama
-VERSION = "3.0.0"
-SYSTEM_NAME = "Deepfake Detection System"
+VERSION = "1.0.0"
+SYSTEM_NAME = "DEEPFAKE ULTRA"
 
 
 if __name__ == "__main__":

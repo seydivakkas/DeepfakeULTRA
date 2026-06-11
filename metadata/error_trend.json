@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2026-05-22T03:17:11.622238",
+    "fp_count": 680,
+    "fn_count": 922,
+    "roc_auc": 0.9899,
+    "eer": 0.0379,
+    "ece": 0.3129,
+    "brier_score": 0.131,
+    "calibrated_ece": 0.0444,
+    "total_evaluated": 42394
+  },
+  {
+    "timestamp": "2026-05-28T18:56:25.581034",
+    "fp_count": 1062,
+    "fn_count": 992,
+    "roc_auc": 0.982,
+    "eer": 0.056,
+    "ece": 0.2943,
+    "brier_score": 0.1344,
+    "calibrated_ece": 0.0414,
+    "total_evaluated": 36938
+  }
+]

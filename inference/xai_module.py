@@ -1,6 +1,7 @@
 """
-Deepfake Detection System v3 — XAI Modülü
-GradCAM++, EigenCAM, CounterfactualXAI, TemporalIntegratedGradients.
+DEEPFAKE ULTRA v1.0 — XAI Modülü
+GradCAM++, EigenCAM, CounterfactualXAI.
+Backbone uyumlu: rgb_backbone (EfficientNet-B4) veya rgb_features (MobileNet).
 """
 import torch
 import torch.nn.functional as F
@@ -9,12 +10,25 @@ from PIL import Image
 from config import model_cfg, DEVICE
 
 
+def _get_target_layer(model):
+    """Model backbone'una göre doğru target layer döndür."""
+    # EfficientNet-B4 backbone
+    if hasattr(model, 'rgb_backbone'):
+        blocks = list(model.rgb_backbone.children())[2]  # Sequential blocks
+        return list(blocks.children())[-1]  # Son block
+    # MobileNet backbone (eski uyumluluk)
+    elif hasattr(model, 'rgb_features'):
+        return model.rgb_features[-1]
+    else:
+        raise AttributeError("Model'de rgb_backbone veya rgb_features bulunamadı")
+
+
 class GradCAMPlusPlus:
     """GradCAM++ — gradient-weighted class activation mapping."""
 
     def __init__(self, model, target_layer=None):
         self.model = model
-        self.target_layer = target_layer or model.rgb_features[-1]
+        self.target_layer = target_layer or _get_target_layer(model)
         self.gradients = None
         self.activations = None
         self._register_hooks()
@@ -65,7 +79,7 @@ class EigenCAM:
 
     def __init__(self, model, target_layer=None):
         self.model = model
-        self.target_layer = target_layer or model.rgb_features[-1]
+        self.target_layer = target_layer or _get_target_layer(model)
         self.activations = None
         self.target_layer.register_forward_hook(
             lambda m, i, o: setattr(self, 'activations', o.detach()))

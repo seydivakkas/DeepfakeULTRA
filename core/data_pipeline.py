@@ -114,29 +114,98 @@ class MultiScaleDWT:
 # FACE MESH LANDMARK ÇIKARIMI
 # ═══════════════════════════════════════════════════════════
 class FaceMeshExtractor:
-    """MediaPipe Face Mesh ile 468 3D yüz landmark noktası çıkarır."""
+    """
+    MediaPipe Face Mesh ile 468 3D yuz landmark noktasi cikarir.
+    
+    Uyumluluk:
+        - MediaPipe >=0.10.30: mp.tasks.vision.FaceLandmarker (yeni API)
+        - MediaPipe <0.10.30:  mp.solutions.face_mesh (eski API)
+    
+    NOT: FaceLandmarker pickle edilemez, bu yuzden lazy init kullanilir.
+    Her worker process'te ayri ayri olusturulur.
+    """
 
     def __init__(self):
-        self.face_mesh = None
-        if HAS_MEDIAPIPE:
-            try:
-                self.face_mesh = mp.solutions.face_mesh.FaceMesh(
-                    static_image_mode=True,
-                    max_num_faces=1,
-                    refine_landmarks=True,
-                    min_detection_confidence=0.5,
+        # Lazy init: pickle uyumlulugu icin __init__'te nesne olusturma
+        self._initialized = False
+        self._api_version = None
+        self._face_mesh = None       # Eski API
+        self._face_landmarker = None  # Yeni API
+
+    def _lazy_init(self):
+        """Ilk kullanımda FaceMesh/FaceLandmarker olustur."""
+        if self._initialized:
+            return
+        self._initialized = True
+
+        if not HAS_MEDIAPIPE:
+            return
+
+        # Oncelik 1: Eski API (solutions)
+        try:
+            fm = mp.solutions.face_mesh.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+            )
+            self._face_mesh = fm
+            self._api_version = "legacy"
+            return
+        except (AttributeError, Exception):
+            pass
+
+        # Oncelik 2: Yeni API (tasks.vision)
+        try:
+            from mediapipe.tasks import python as mp_python
+            from mediapipe.tasks.python import vision as mp_vision
+
+            model_path = self._find_model_file()
+            if model_path:
+                base_options = mp_python.BaseOptions(
+                    model_asset_path=str(model_path)
                 )
-            except (AttributeError, Exception):
-                self.face_mesh = None
+                options = mp_vision.FaceLandmarkerOptions(
+                    base_options=base_options,
+                    output_face_blendshapes=False,
+                    num_faces=1,
+                )
+                self._face_landmarker = mp_vision.FaceLandmarker.create_from_options(options)
+                self._api_version = "tasks"
+                return
+        except Exception:
+            pass
+
+    @staticmethod
+    def _find_model_file():
+        """face_landmarker.task dosyasini bilinen konumlarda ara."""
+        candidates = [
+            paths.MODEL_DIR / "face_landmarker.task",
+            paths.BASE_DIR / "face_landmarker.task",
+            Path("face_landmarker.task"),
+        ]
+        for p in candidates:
+            if p.exists():
+                return p
+        return None
 
     def __call__(self, image: np.ndarray) -> np.ndarray:
-        if not HAS_MEDIAPIPE or self.face_mesh is None:
-            return np.zeros(model_cfg.MESH_INPUT_DIM, dtype=np.float32)
+        self._lazy_init()
 
+        if self._api_version == "legacy" and self._face_mesh is not None:
+            return self._extract_legacy(image)
+
+        if self._api_version == "tasks" and self._face_landmarker is not None:
+            return self._extract_tasks(image)
+
+        return np.zeros(model_cfg.MESH_INPUT_DIM, dtype=np.float32)
+
+    def _extract_legacy(self, image: np.ndarray) -> np.ndarray:
+        """Eski mp.solutions API ile landmark cikar."""
         try:
             if image.dtype != np.uint8:
                 image = (image * 255).astype(np.uint8)
-            results = self.face_mesh.process(image)
+            results = self._face_mesh.process(image)
             if results.multi_face_landmarks:
                 landmarks = results.multi_face_landmarks[0]
                 coords = []
@@ -145,12 +214,41 @@ class FaceMeshExtractor:
                 return np.array(coords, dtype=np.float32)
         except Exception:
             pass
+        return np.zeros(model_cfg.MESH_INPUT_DIM, dtype=np.float32)
 
+    def _extract_tasks(self, image: np.ndarray) -> np.ndarray:
+        """Yeni mp.tasks.vision API ile landmark cikar."""
+        try:
+            if image.dtype != np.uint8:
+                image = (image * 255).astype(np.uint8)
+
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+            results = self._face_landmarker.detect(mp_image)
+
+            if results.face_landmarks and len(results.face_landmarks) > 0:
+                landmarks = results.face_landmarks[0]
+                coords = []
+                for lm in landmarks:
+                    coords.extend([lm.x, lm.y, lm.z])
+
+                expected = model_cfg.MESH_INPUT_DIM
+                arr = np.array(coords, dtype=np.float32)
+
+                if len(arr) > expected:
+                    arr = arr[:expected]
+                elif len(arr) < expected:
+                    arr = np.pad(arr, (0, expected - len(arr)))
+                return arr
+        except Exception:
+            pass
         return np.zeros(model_cfg.MESH_INPUT_DIM, dtype=np.float32)
 
     def __del__(self):
-        if self.face_mesh:
-            self.face_mesh.close()
+        if self._face_mesh:
+            try:
+                self._face_mesh.close()
+            except Exception:
+                pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -362,7 +460,6 @@ class DeepfakeDataset(Dataset):
                 ),
                 transforms.RandomGrayscale(p=0.1),
                 transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-                # Ekstra agresif blur
                 transforms.RandomApply([
                     transforms.GaussianBlur(kernel_size=5, sigma=(1.0, 3.0)),
                 ], p=0.2),
@@ -411,8 +508,8 @@ class DeepfakeDataset(Dataset):
         return rgb_tensor, freq_tensor, mesh_tensor, label, source_tag
 
     def _get_cache_path(self, img_path: str, suffix: str) -> Path:
-        """Cache dosya yolunu oluştur — orijinal dosyanın yanına .freq.npy / .mesh.npy"""
-        p = Path(img_path)
+        """Cache dosya yolunu oluştur — symlink'i resolve ederek orijinal dizine yaz."""
+        p = Path(img_path).resolve()  # Symlink → gerçek yol (precache ile eşleşsin)
         cache_dir = p.parent / ".cache"
         cache_dir.mkdir(exist_ok=True)
         return cache_dir / f"{p.stem}_{suffix}.npy"
@@ -422,8 +519,37 @@ class DeepfakeDataset(Dataset):
         return self.dwt(img_np)
 
     def _get_mesh_cached(self, img_path: str, img_np: np.ndarray) -> np.ndarray:
-        """Face mesh vektörünü hesapla."""
-        return self.mesh_extractor(img_np)
+        """Face mesh vektorunu cache-first yukle.
+        
+        Oncelik:
+            1. .cache/stem_mesh.npy varsa diskten oku (hizli, pickle-safe)
+            2. Yoksa FaceMeshExtractor ile hesapla ve cache'e kaydet
+        """
+        expected = model_cfg.MESH_INPUT_DIM  # 1404
+
+        cache_path = self._get_cache_path(img_path, "mesh")
+        if cache_path.exists():
+            try:
+                arr = np.load(str(cache_path))
+                # Boyut normalizasyonu (478 lm=1434 vs 468 lm=1404)
+                if len(arr) > expected:
+                    arr = arr[:expected]
+                elif len(arr) < expected:
+                    arr = np.pad(arr, (0, expected - len(arr)))
+                return arr
+            except Exception:
+                pass
+
+        # Cache yok — hesapla
+        mesh = self.mesh_extractor(img_np)
+
+        # Cache'e kaydet (sessiz hata)
+        try:
+            np.save(str(cache_path), mesh)
+        except Exception:
+            pass
+
+        return mesh
 
     def get_class_distribution(self) -> Dict[str, int]:
         dist = {name: 0 for name in model_cfg.CLASS_NAMES}
@@ -448,17 +574,18 @@ def create_unified_dataset(split: str = "train") -> Dataset:
     """
     datasets = []
 
-    # --- ONCELIK: Fiziksel split dizini ---
-    split_dir = paths.DATASET_DIR / "faces_split" / split
+    # --- faces_split_v2 (tam dengeli %50/%50, tek kaynak of truth) ---
+    split_dir = paths.DATASET_DIR / "faces_split_v2" / split
+
     if split_dir.exists() and (split_dir / "real").exists():
         ds = DeepfakeDataset(str(split_dir), split=split, source_tag="unified")
         if len(ds) > 0:
             dist = ds.get_class_distribution()
-            print(f"  [faces_split/{split}] {dist} (birlesik fiziksel split)")
+            print(f"  [faces_split_v2/{split}] {dist} (dengeli fiziksel split)")
 
             # Train ise: sikistirilmis veriyi de ekle
             if split == "train":
-                compressed_base = paths.DATASET_DIR / "faces_split" / "train_compressed"
+                compressed_base = paths.DATASET_DIR / "faces_split_v2" / "train_compressed"
                 if compressed_base.exists():
                     compressed_datasets = [ds]
                     for platform_dir in sorted(compressed_base.iterdir()):
@@ -693,37 +820,30 @@ def get_dataloaders(
     Binary sınıflandırma: REAL (0) / FAKE (1).
     WeightedRandomSampler ile sınıf dengeleme.
     """
-    from torch.utils.data import WeightedRandomSampler
-
     print("Veri setleri yukleniyor (binary: REAL/FAKE)...")
 
     train_dataset = create_unified_dataset("train")
     val_dataset = create_unified_dataset("val")
     test_dataset = create_unified_dataset("test")
 
-    # WeightedRandomSampler
-    sample_weights = compute_sample_weights(train_dataset)
-    # G3: %30 fazla örnekleme → replacement=True modunda ~%33 unique kayıp telafisi
-    effective_samples = int(len(train_dataset) * 1.3)
-    sampler = WeightedRandomSampler(
-        weights=sample_weights,
-        num_samples=effective_samples,
-        replacement=True,
-    )
-    print(f"  ⚡ WeightedRandomSampler: num_samples={effective_samples} "
-          f"(x1.3, orijinal={len(train_dataset)})")
+    # 50/50 dengeli veri — WeightedRandomSampler gereksiz
+    # shuffle=True yeterli, sampler overfitting riski yaratir
+    print(f"  Egitim: {len(train_dataset):,} ornek (shuffle=True, dengeli)")
 
     pin = DEVICE.type == "cuda"
+
+    # prefetch_factor=4: Windows shared-memory için güvenli
+    _pf = 4 if num_workers > 0 else None
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        sampler=sampler,
+        shuffle=True,
         num_workers=num_workers,
         pin_memory=pin,
         drop_last=True,
-        prefetch_factor=4 if num_workers > 0 else None,  # ↑ 2→4
-        persistent_workers=num_workers > 0,  # ↑ True: worker recycle yok
+        prefetch_factor=_pf,
+        persistent_workers=num_workers > 0,  # Worker recycle yok, hizlandirir
     )
 
     val_loader = DataLoader(
@@ -732,8 +852,8 @@ def get_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin,
-        prefetch_factor=4 if num_workers > 0 else None,  # ↑ 2→4
-        persistent_workers=num_workers > 0,  # ↑ True: worker recycle yok
+        prefetch_factor=_pf,
+        persistent_workers=num_workers > 0,
     )
 
     test_loader = DataLoader(
@@ -742,8 +862,8 @@ def get_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin,
-        prefetch_factor=4 if num_workers > 0 else None,  # ↑ 2→4
-        persistent_workers=num_workers > 0,  # ↑ True: worker recycle yok
+        prefetch_factor=_pf,
+        persistent_workers=num_workers > 0,
     )
 
     print(f"Veri seti: Train={len(train_dataset)}, "
@@ -765,22 +885,24 @@ def _build_loaders(train_ds, val_ds, test_ds, batch_size, num_workers):
         weights=sample_weights, num_samples=len(train_ds), replacement=True
     )
 
+    _pf = 4 if num_workers > 0 else None
+
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, sampler=sampler,
         num_workers=num_workers, pin_memory=pin, drop_last=True,
-        prefetch_factor=2 if num_workers > 0 else None,
+        prefetch_factor=_pf,
         persistent_workers=False,
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=pin,
-        prefetch_factor=2 if num_workers > 0 else None,
+        prefetch_factor=_pf,
         persistent_workers=False,
     ) if val_ds and len(val_ds) > 0 else None
     test_loader = DataLoader(
         test_ds, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=pin,
-        prefetch_factor=2 if num_workers > 0 else None,
+        prefetch_factor=_pf,
         persistent_workers=False,
     ) if test_ds and len(test_ds) > 0 else None
 

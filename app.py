@@ -16,7 +16,12 @@ from ui.components import (
     handle_finetune, handle_finetune_status, handle_rollback, handle_pool_status,
     handle_compression_sweep,
     handle_forensics,
-    handle_model_profile, handle_cross_validation, handle_test_new_dataset,
+    handle_model_profile,
+    handle_cross_dataset_benchmark,
+    handle_domain_ft_discover, handle_domain_ft_start,
+    handle_domain_ft_status, handle_domain_ft_rollback,
+    handle_model_switch,
+    handle_jury_gallery, handle_jury_single_analysis, handle_jury_batch_test,
 )
 from ui.craniofacial_tab import create_craniofacial_tab
 
@@ -108,8 +113,8 @@ CSS = """
 def create_app():
     with gr.Blocks(title=f"{SYSTEM_NAME} v{VERSION}") as demo:
 
-        gr.HTML(f'<div class="app-title">🔍 {SYSTEM_NAME} V{VERSION}</div>')
-        gr.HTML('<div class="app-subtitle">AI-powered deepfake analysis — GradCAM++ · XAI · TTA · Batch · Adversarial</div>')
+        gr.HTML(f'<div class="app-title">🔍 {SYSTEM_NAME} v{VERSION}</div>')
+
 
         # Gizli state
         analysis_id_state = gr.State("")
@@ -141,6 +146,21 @@ def create_app():
                         5, 15, 8, step=1,
                         label="🎯 TTA Sayısı",
                         info="Yüksek → Daha güvenilir"
+                    )
+                    model_selector = gr.Dropdown(
+                        choices=[
+                            "🏆 Orijinal (AUC 0.982)",
+                            "🌐 Generalized (Cross-Dataset)",
+                        ],
+                        value="🏆 Orijinal (AUC 0.982)",
+                        label="🧠 Model Seçimi",
+                        info="Orijinal = eğitim verisi uzmanı, Generalized = cross-dataset",
+                    )
+                    model_status = gr.Markdown(value="")
+                    model_selector.change(
+                        fn=handle_model_switch,
+                        inputs=[model_selector],
+                        outputs=[model_status],
                     )
                     btn_analyze = gr.Button("🔬 Analiz Et", variant="primary", size="lg")
                     watermark_md = gr.Markdown()
@@ -353,7 +373,7 @@ def create_app():
             mp_btn = gr.Button("🔄 Model Profilini Yükle", variant="primary", size="sm")
 
             # ── Üst: Test Split ROC + CM (ana metrikler) ──
-            gr.Markdown("##### 📈 Eğitim Test Split Performansı (`faces_split/test/`)")
+            gr.Markdown("##### 📈 Eğitim Test Split Performansı (`faces_split_v2/test/`)")
             with gr.Row(equal_height=True):
                 mp_roc = gr.Plot(label="📈 ROC (Test Split)")
                 mp_cm = gr.Plot(label="🎯 CM (Test Split)")
@@ -372,59 +392,86 @@ def create_app():
             with gr.Accordion("⚙️ Eğitim Konfigürasyonu", open=False):
                 mp_train = gr.Markdown("_Yükleniyor…_")
 
-            with gr.Accordion("🔀 Cross-Validation (K-Fold)", open=False):
-                with gr.Row():
-                    cv_folds = gr.Slider(3, 10, 5, step=1, label="Fold Sayısı")
-                    cv_samples = gr.Slider(20, 500, 100, step=10, label="Sınıf Başına Örnek")
-                    cv_btn = gr.Button("▶️ Cross-Validation Başlat", variant="primary", size="sm")
-                cv_roc = gr.Plot(label="📈 Birleşik ROC")
-                cv_result = gr.Markdown()
-
-            with gr.Accordion("🧪 Harici Veri Seti Testi", open=False):
-                gr.Markdown(
-                    "**Preset:** Celeb-DF v2 · **Manuel:** Herhangi bir `real/` + `fake/` klasörü"
-                )
-                with gr.Row():
-                    celebdf_btn = gr.Button(
-                        "🎬 Celeb-DF v2 Test Et",
-                        variant="secondary", size="sm",
-                    )
-                    nd_path = gr.Textbox(
-                        label="Veya Manuel Yol",
-                        placeholder="C:/path/to/test_data",
-                        scale=2,
-                    )
-                    nd_btn = gr.Button("▶️ Test Et", variant="primary", size="sm")
-                with gr.Row():
-                    nd_roc = gr.Plot(label="📈 ROC")
-                    nd_cm = gr.Plot(label="🎯 CM")
-                nd_result = gr.Markdown()
-
-                def _run_celebdf_test():
-                    from config import paths
-                    import os
-                    p = os.path.join(str(paths.BASE_DIR), "dataset", "external_tests", "celeb_df_v2")
-                    return handle_test_new_dataset(p)
-
-                celebdf_btn.click(
-                    fn=_run_celebdf_test,
-                    outputs=[nd_roc, nd_cm, nd_result],
-                )
-
             mp_btn.click(
                 fn=handle_model_profile,
                 outputs=[mp_arch, mp_train, mp_ckpt, mp_dataset, mp_roc, mp_cm, mp_metrics]
             )
-            cv_btn.click(
-                fn=handle_cross_validation,
-                inputs=[cv_folds, cv_samples],
-                outputs=[cv_roc, cv_result]
-            )
-            nd_btn.click(
-                fn=handle_test_new_dataset,
-                inputs=[nd_path],
-                outputs=[nd_roc, nd_cm, nd_result]
-            )
+
+            with gr.Accordion("🌐 Cross-Dataset Benchmark", open=False):
+                gr.Markdown(
+                    "Tüm harici veri setleri (`external_tests/`, `jury_test/`, `faces_split_v2/test/`) "
+                    "üzerinden otomatik benchmark. Karşılaştırmalı AUC, F1, ROC overlay."
+                )
+                with gr.Row():
+                    bench_samples = gr.Slider(
+                        50, 500, 200, step=50,
+                        label="Sınıf Başına Maks. Örnek",
+                        info="Düşük = hızlı, yüksek = doğru",
+                    )
+                    bench_btn = gr.Button(
+                        "🚀 Benchmark Başlat", variant="primary", size="sm",
+                    )
+                bench_progress = gr.Markdown("_Butona tıklayarak başlatın…_")
+                bench_table = gr.Markdown()
+                with gr.Row(equal_height=True):
+                    bench_radar = gr.Plot(label="📊 Radar Chart")
+                    bench_roc = gr.Plot(label="📈 ROC Overlay")
+                bench_summary = gr.Markdown()
+
+                bench_btn.click(
+                    fn=handle_cross_dataset_benchmark,
+                    inputs=[bench_samples],
+                    outputs=[bench_progress, bench_table, bench_radar, bench_roc, bench_summary],
+                )
+
+            with gr.Accordion("🧬 Domain Fine-Tune", open=False):
+                gr.Markdown(
+                    "Harici veri setleri üzerinden modeli fine-tune ederek **domain generalization** "
+                    "yeteneğini artırın. Tam tri-branch pipeline (RGB+Freq+Mesh) kullanılır."
+                )
+                with gr.Row():
+                    dft_info = gr.Markdown("_Dataset'leri keşfetmek için butona tıklayın._")
+                dft_discover_btn = gr.Button("🔍 Veri Setlerini Keşfet", size="sm")
+                dft_datasets = gr.CheckboxGroup(
+                    choices=[], label="Fine-Tune İçin Veri Setleri Seçin",
+                    info="50/50 dengeli örnekleme uygulanır",
+                )
+                with gr.Row():
+                    dft_epochs = gr.Slider(
+                        3, 20, 8, step=1, label="Epoch",
+                        info="Önerilen: 5-10",
+                    )
+                    dft_lr = gr.Slider(
+                        1e-6, 1e-4, 5e-5, step=1e-6, label="Learning Rate",
+                        info="Düşük = güvenli, yüksek = hızlı",
+                    )
+                with gr.Row():
+                    dft_start_btn = gr.Button("🚀 Fine-Tune Başlat", variant="primary", size="sm")
+                    dft_status_btn = gr.Button("📊 Durum", size="sm")
+                    dft_rollback_btn = gr.Button("↩️ Rollback", variant="stop", size="sm")
+                dft_result = gr.Markdown()
+
+                def _discover_and_update():
+                    choices, info = handle_domain_ft_discover()
+                    return gr.update(choices=choices, value=[]), info
+
+                dft_discover_btn.click(
+                    fn=_discover_and_update,
+                    outputs=[dft_datasets, dft_info],
+                )
+                dft_start_btn.click(
+                    fn=handle_domain_ft_start,
+                    inputs=[dft_datasets, dft_epochs, dft_lr],
+                    outputs=[dft_result],
+                )
+                dft_status_btn.click(
+                    fn=handle_domain_ft_status,
+                    outputs=[dft_result],
+                )
+                dft_rollback_btn.click(
+                    fn=handle_domain_ft_rollback,
+                    outputs=[dft_result],
+                )
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # SEKME 5: ANALİZ GEÇMİŞİ
@@ -447,7 +494,100 @@ def create_app():
             create_craniofacial_tab()
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # SEKME 5: ANALİZ ASİSTANI
+        # SEKME 7: JÜRI GALERİSİ
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        with gr.Tab("🏆 Jüri Galerisi"):
+            gr.HTML(
+                '<div class="chat-hero" style="padding:14px 20px;margin-bottom:8px">'
+                '<h2 style="font-size:1.1rem;margin:0 0 2px 0">🏆 Jüri Demo V2 — Görsel Galeri</h2>'
+                '<p style="margin:0;font-size:0.75rem">100 Real + 100 Fake yüksek güvenli görsel. '
+                'Görsele tıklayarak detaylı analiz yapın veya batch test çalıştırın.</p>'
+                '<div class="chat-status online"><span class="dot"></span> Galeri Hazır</div>'
+                '</div>'
+            )
+
+            with gr.Row(equal_height=True):
+                jury_load_btn = gr.Button("📂 Galeriyi Yükle", variant="primary", size="sm")
+                jury_model_selector = gr.Dropdown(
+                    choices=[
+                        "🏆 Orijinal (AUC 0.982)",
+                        "🌐 Generalized (Cross-Dataset)",
+                    ],
+                    value="🏆 Orijinal (AUC 0.982)",
+                    label="🧠 Model Seçimi",
+                    info="Analiz ve batch test için kullanılacak model",
+                    scale=2,
+                )
+                jury_batch_btn = gr.Button("🧪 Tüm Görselleri Test Et", variant="secondary", size="sm")
+            jury_model_status = gr.Markdown(value="")
+            jury_info = gr.Markdown("_Galeriyi yüklemek için butona tıklayın._")
+
+            # Model seçimi değiştiğinde — jüri sekmesinden de model değiştirebilsin
+            jury_model_selector.change(
+                fn=handle_model_switch,
+                inputs=[jury_model_selector],
+                outputs=[jury_model_status],
+            )
+
+            with gr.Row(equal_height=True):
+                with gr.Column(scale=3, min_width=400):
+                    jury_gallery = gr.Gallery(
+                        label="📸 Jüri Demo V2",
+                        columns=5,
+                        rows=4,
+                        height=500,
+                        object_fit="cover",
+                        allow_preview=True,
+                    )
+                with gr.Column(scale=1, min_width=250):
+                    jury_selected_img = gr.Image(
+                        label="Seçilen Görsel", height=200, format="png",
+                        interactive=False,
+                    )
+                    jury_analyze_btn = gr.Button("🔬 Seçili Görseli Analiz Et", variant="primary", size="sm")
+                    jury_result_md = gr.Markdown("_Bir görsel seçin ve analiz edin._")
+
+            # Batch test sonuçları
+            with gr.Row(equal_height=True):
+                jury_batch_report = gr.Markdown()
+            with gr.Row(equal_height=True):
+                jury_batch_chart = gr.Plot(label="📊 Accuracy")
+                jury_cm_chart = gr.Plot(label="🎯 Confusion Matrix")
+
+            # Event bindings
+            jury_load_btn.click(
+                fn=handle_jury_gallery,
+                outputs=[jury_gallery, jury_info],
+            )
+
+            def _gallery_select(evt: gr.SelectData):
+                """Galeriden görsel seçildiğinde."""
+                if evt and evt.value:
+                    img_data = evt.value
+                    if isinstance(img_data, dict):
+                        return img_data.get("image", {}).get("path", None)
+                    elif isinstance(img_data, str):
+                        return img_data
+                return None
+
+            jury_gallery.select(
+                fn=_gallery_select,
+                outputs=[jury_selected_img],
+            )
+
+            jury_analyze_btn.click(
+                fn=handle_jury_single_analysis,
+                inputs=[jury_selected_img],
+                outputs=[jury_result_md],
+            )
+
+            jury_batch_btn.click(
+                fn=handle_jury_batch_test,
+                outputs=[jury_batch_report, jury_batch_chart, jury_cm_chart],
+            )
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # SEKME 8: ANALİZ ASİSTANI
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         with gr.Tab("💬 Analiz Asistanı"):
             # Hero başlık

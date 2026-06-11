@@ -18,7 +18,10 @@ class FastCAM:
     """FastCAM — SMOE (Sparse Mixture of Experts) saliency."""
     def __init__(self, model, target_layer=None):
         self.model = model
-        self.target_layer = target_layer or model.rgb_features[-1]
+        if target_layer is None:
+            from inference.xai_module import _get_target_layer
+            target_layer = _get_target_layer(model)
+        self.target_layer = target_layer
         self.activations = None
         self.target_layer.register_forward_hook(
             lambda m, i, o: setattr(self, 'activations', o.detach()))

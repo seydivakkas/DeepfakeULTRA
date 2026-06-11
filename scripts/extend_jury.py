@@ -31,7 +31,7 @@ except ImportError:
 
 BASE = Path(__file__).parent.parent / "dataset"
 FACES = BASE / "faces"
-SPLIT = BASE / "faces_split"
+SPLIT = BASE / "faces_split_v2"
 JURY = BASE / "jury_test"
 JURY_BACKUP = BASE / "jury_test_backup_v1"
 

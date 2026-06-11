@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-05-28 02:58:26",
+  "original": {
+    "real": 136226,
+    "fake": 289000
+  },
+  "after_quality_filter": {
+    "real": 123122,
+    "fake": 269875
+  },
+  "after_balance": {
+    "train": {
+      "real": 86185,
+      "fake": 86185
+    },
+    "val": {
+      "real": 18468,
+      "fake": 18468
+    },
+    "test": {
+      "real": 18469,
+      "fake": 18469
+    }
+  },
+  "quality_thresholds": {
+    "min_resolution": 128,
+    "min_laplacian_var": 15.0,
+    "min_file_size_kb": 2
+  },
+  "split_ratios": {
+    "train": 0.7,
+    "val": 0.15,
+    "test": 0.15
+  }
+}

@@ -246,16 +246,6 @@ def apply_profile_angle(img: Image.Image) -> Image.Image:
     return img
 
 
-AUGMENT_FNS = {
-    "beauty_filter": apply_beauty_filter,
-    "hdr_edited": apply_hdr_edit,
-    "low_quality": apply_low_quality,
-    "heavy_makeup": apply_heavy_makeup,
-    "profile_angle": apply_profile_angle,
-    "screen_recapture": apply_screen_recapture,
-}
-
-
 def apply_screen_recapture(img: Image.Image) -> Image.Image:
     """
     Screen recapture simülasyonu (G1).
@@ -307,6 +297,19 @@ def apply_screen_recapture(img: Image.Image) -> Image.Image:
     img.save(buf, format="JPEG", quality=random.randint(60, 80))
     buf.seek(0)
     return Image.open(buf).convert("RGB")
+
+
+AUGMENT_FNS = {
+    "beauty_filter": apply_beauty_filter,
+    "hdr_edited": apply_hdr_edit,
+    "low_quality": apply_low_quality,
+    "heavy_makeup": apply_heavy_makeup,
+    "profile_angle": apply_profile_angle,
+    "screen_recapture": apply_screen_recapture,
+}
+
+
+
 
 
 def process_single(args):
@@ -409,7 +412,7 @@ def main():
     if HAS_LEAKAGE_CHECKER:
         print(f"\n🔐 3-Katmanlı Leakage Kontrolü...")
         # Eğitim seti index'i oluştur
-        split_dir = Path(__file__).parent.parent / "dataset" / "faces_split" / "train"
+        split_dir = Path(__file__).parent.parent / "dataset" / "faces_split_v2" / "train"
         if split_dir.exists():
             ref_index = build_reference_index(split_dir, use_embedding=False)
             leaked = 0

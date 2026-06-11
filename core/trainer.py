@@ -56,38 +56,56 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════
-# BACKBONE FREEZE/UNFREEZE
+# BACKBONE FREEZE/UNFREEZE (MobileNetV3 + EfficientNet uyumlu)
 # ═══════════════════════════════════════════════════════════
+def _get_rgb_backbone_params(model):
+    """RGB backbone parametrelerini dondur (backbone tipine gore)."""
+    backbone_type = getattr(model, "backbone_type", "mobilenet_v3_large")
+    if backbone_type == "efficientnet_b4" and hasattr(model, "rgb_backbone"):
+        return model.rgb_backbone.parameters()
+    return model.rgb_features.parameters()
+
+
 def freeze_backbone(model):
-    """Pretrained backbone katmanlarını dondur — sadece classifier öğrensin."""
-    for param in model.rgb_features.parameters():
+    """Pretrained backbone katmanlarini dondur — sadece classifier ogrensin."""
+    for param in _get_rgb_backbone_params(model):
         param.requires_grad = False
     for param in model.freq_features.parameters():
         param.requires_grad = False
     frozen = sum(1 for p in model.parameters() if not p.requires_grad)
     total = sum(1 for p in model.parameters())
-    print(f"  🧊 Backbone donduruldu — {frozen}/{total} parametre donuk")
+    backbone_name = getattr(model, "backbone_type", "mobilenet_v3_large")
+    print(f"  🧊 Backbone donduruldu ({backbone_name}) — {frozen}/{total} parametre donuk")
 
 
 def unfreeze_backbone(model):
-    """Backbone'u aç — fine-tuning başlasın."""
-    for param in model.rgb_features.parameters():
+    """Backbone'u ac — fine-tuning baslasin."""
+    for param in _get_rgb_backbone_params(model):
         param.requires_grad = True
     for param in model.freq_features.parameters():
         param.requires_grad = True
     trainable = sum(1 for p in model.parameters() if p.requires_grad)
     total = sum(1 for p in model.parameters())
-    print(f"  🔥 Backbone açıldı — {trainable}/{total} parametre eğitilebilir")
+    backbone_name = getattr(model, "backbone_type", "mobilenet_v3_large")
+    print(f"  🔥 Backbone acildi ({backbone_name}) — {trainable}/{total} parametre egitilebilir")
 
 
 def create_discriminative_optimizer(model, base_lr):
-    """Backbone için düşük LR, diğer katmanlar için yüksek LR."""
+    """Backbone icin dusuk LR, diger katmanlar icin yuksek LR."""
+    backbone_type = getattr(model, "backbone_type", "mobilenet_v3_large")
     backbone_params = []
     other_params = []
+
+    # Backbone parametrelerini belirle
+    if backbone_type == "efficientnet_b4" and hasattr(model, "rgb_backbone"):
+        backbone_prefixes = ("rgb_backbone.", "freq_features.")
+    else:
+        backbone_prefixes = ("rgb_features.", "freq_features.")
+
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        if "rgb_features" in name or "freq_features" in name:
+        if any(name.startswith(p) for p in backbone_prefixes):
             backbone_params.append(param)
         else:
             other_params.append(param)
@@ -98,7 +116,7 @@ def create_discriminative_optimizer(model, base_lr):
         {"params": backbone_params, "lr": backbone_lr},
     ]
     optimizer = AdamW(param_groups, weight_decay=model_cfg.WEIGHT_DECAY)
-    print(f"  📐 Discriminative LR: backbone={backbone_lr:.2e}, diğer={base_lr:.2e}")
+    print(f"  📐 Discriminative LR ({backbone_type}): backbone={backbone_lr:.2e}, diger={base_lr:.2e}")
     return optimizer
 
 
@@ -213,7 +231,7 @@ def train_epoch(model, teacher, loader, criterion, optimizer, epoch, scaler=None
     class_correct = Counter()
     class_total = Counter()
 
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
     pbar = tqdm(loader, desc=f"Epoch {epoch+1} [Train]", leave=False)
 
     for step, batch in enumerate(pbar):
@@ -249,17 +267,18 @@ def train_epoch(model, teacher, loader, criterion, optimizer, epoch, scaler=None
             eps_max = getattr(model_cfg, 'FGSM_EPSILON_MAX', 0.03)
             eps = np.random.uniform(eps_min, eps_max)
             rgb_adv = rgb.detach().clone().requires_grad_(True)
-            with autocast(device_type="cuda", enabled=use_amp):
-                adv_logits = model(rgb_adv, freq, mesh)
-                adv_loss = F.cross_entropy(adv_logits, labels_a)
-            adv_loss.backward()
+            with torch.enable_grad():
+                with autocast(device_type="cuda", enabled=use_amp):
+                    adv_logits = model(rgb_adv, freq.detach(), mesh.detach())
+                    adv_loss = F.cross_entropy(adv_logits, labels_a)
+                # Gradyan sadece rgb_adv'e akar, model parametrelerine bulasmaz
+                adv_loss.backward(inputs=[rgb_adv])
             if rgb_adv.grad is not None:
                 rgb = (rgb + eps * rgb_adv.grad.sign()).detach()
-            model.zero_grad()
 
         # Mixed Precision forward
         if use_amp and scaler is not None:
-            with autocast(device_type="cuda"):
+            with autocast(device_type="cuda", enabled=use_amp):
                 # Contrastive: embedding + logits birlikte al
                 if hasattr(model, 'forward_with_embeddings'):
                     student_logits, embeddings = model.forward_with_embeddings(rgb, freq, mesh)
@@ -288,7 +307,7 @@ def train_epoch(model, teacher, loader, criterion, optimizer, epoch, scaler=None
                 nn.utils.clip_grad_norm_(model.parameters(), model_cfg.GRADIENT_CLIP_MAX_NORM)
                 scaler.step(optimizer)
                 scaler.update()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
                 if warmup_scheduler:
                     warmup_scheduler.step()
         else:
@@ -357,14 +376,17 @@ def validate_epoch(model, loader, criterion):
     total_loss, correct, total = 0.0, 0, 0
     all_probs, all_labels, all_preds = [], [], []
 
+    use_amp = model_cfg.USE_MIXED_PRECISION and DEVICE.type == "cuda"
+
     with torch.no_grad():
         for batch in loader:
             rgb, freq, mesh, labels, source_tags = batch
             rgb, freq = rgb.to(DEVICE), freq.to(DEVICE)
             mesh, labels = mesh.to(DEVICE), labels.to(DEVICE)
 
-            logits = model(rgb, freq, mesh)
-            losses = criterion(logits, labels)
+            with autocast(device_type="cuda", enabled=use_amp):
+                logits = model(rgb, freq, mesh)
+                losses = criterion(logits, labels)
             loss = losses["total_loss"]
 
             total_loss += loss.item() * labels.size(0)
@@ -556,6 +578,7 @@ def train_and_evaluate(epochs=None, batch_size=None, resume=None):
             mlflow.log_params({
                 "lr": base_lr, "epochs": epochs,
                 "batch_size": batch_size, "backbone": model_cfg.RGB_BACKBONE,
+                "backbone_type": getattr(model_cfg, "RGB_BACKBONE_TYPE", "mobilenet_v3_large"),
                 "num_classes": model_cfg.NUM_CLASSES,
                 "mixed_precision": model_cfg.USE_MIXED_PRECISION,
                 "gradient_accumulation": model_cfg.GRADIENT_ACCUMULATION_STEPS,
@@ -849,8 +872,8 @@ def _train_single_source(source_name, get_loaders_fn, branch_name, save_name,
 
         # Validation
         if val_loader:
-            val_metrics = validate_epoch(model, val_loader, criterion,
-                                         active_classes=active_classes)
+            with torch.cuda.amp.autocast(enabled=model_cfg.USE_MIXED_PRECISION):
+                val_metrics = validate_epoch(model, val_loader, criterion, active_classes=active_classes)
         else:
             val_metrics = {"loss": 0, "accuracy": 0, "auc": 0.5, "macro_f1": 0, "per_class": {}}
 

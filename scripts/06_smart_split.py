@@ -221,6 +221,32 @@ def main(dry_run=False, max_workers=4):
     print("=" * 65)
 
     # --- REAL verisi sayimi (V6 — VGGFace2 eklendi, FFHQ 256 guncellendi) ---
+    # Yuz algilama filtresi icin (sidset gibi karisik kaynaklar)
+    FACE_FILTER_SOURCES = {"sidset_real"}  # Bu kaynaklara yuz filtresi uygulanir
+    FACE_CASCADE_PATH = Path(__file__).resolve().parent / "cv2_data" / "haarcascade_frontalface_default.xml"
+    FACE_MIN_RATIO = 0.03  # Yuz alani / resim alani
+
+    def _has_face(filepath):
+        """Haar cascade ile hizli yuz kontrolu."""
+        try:
+            img = cv2.imread(str(filepath))
+            if img is None:
+                return False
+            h, w = img.shape[:2]
+            scale = min(1.0, 800 / max(h, w))
+            if scale < 1.0:
+                img = cv2.resize(img, None, fx=scale, fy=scale)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.equalizeHist(gray)
+            fc = cv2.CascadeClassifier(str(FACE_CASCADE_PATH))
+            faces = fc.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
+            if len(faces) == 0:
+                return False
+            max_area = max((fw/scale)*(fh/scale) for (_, _, fw, fh) in faces)
+            return (max_area / (h * w)) >= FACE_MIN_RATIO
+        except Exception:
+            return False
+
     real_sources = {
         "ffpp":           (FACES_DIR / "ffpp",                "real",  False),
         "celeba":         (FACES_DIR / "celeba_hq",           "real",  False),
@@ -238,8 +264,22 @@ def main(dry_run=False, max_workers=4):
         if ldir.exists():
             files = [f for f in ldir.rglob("*")
                      if f.is_file() and f.suffix.lower() in SUPPORTED]
+
+            # Yuz filtresi gereken kaynaklar
+            if name in FACE_FILTER_SOURCES and FACE_CASCADE_PATH.exists():
+                print(f"  {name:12s}: {len(files):>8,} (yuz filtresi uygulaniyor...)")
+                filtered = []
+                for j, f in enumerate(files):
+                    if _has_face(f):
+                        filtered.append(f)
+                    if (j + 1) % 5000 == 0:
+                        print(f"    {j+1}/{len(files)} taranidi, gecen: {len(filtered)}")
+                files = filtered
+                print(f"  {name:12s}: {len(files):>8,} (yuz filtresi sonrasi)")
+            else:
+                print(f"  {name:12s}: {len(files):>8,}")
+
             all_real_files.extend([(f, name) for f in files])
-            print(f"  {name:12s}: {len(files):>8,}")
 
     total_real = len(all_real_files)
     print(f"  {'TOPLAM':12s}: {total_real:>8,}")

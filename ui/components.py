@@ -1045,7 +1045,7 @@ def handle_model_profile():
 
 
 def _compute_test_split_metrics(max_per_class=50):
-    """Eğitim pipeline'ının test split'i (faces_split/test) üzerinden
+    """Eğitim pipeline'ının test split'i (faces_split_v2/test) üzerinden
     ROC, CM ve metrik hesapla. Bu gerçek eğitim performansını yansıtır."""
     try:
         from inference.predictor import get_predictor
@@ -1057,10 +1057,10 @@ def _compute_test_split_metrics(max_per_class=50):
 
         predictor = get_predictor()
         test_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                "dataset", "faces_split", "test")
+                                "dataset", "faces_split_v2", "test")
 
         if not os.path.exists(test_dir):
-            return None, None, "> ⚠️ Test split bulunamadı: `dataset/faces_split/test/`"
+            return None, None, "> ⚠️ Test split bulunamadı: `dataset/faces_split_v2/test/`"
 
         labels = []
         preds = []
@@ -1093,7 +1093,7 @@ def _compute_test_split_metrics(max_per_class=50):
         cm_fig = generate_confusion_matrix_plot(labels, preds)
         summary = generate_metrics_summary(labels, preds, probs)
         summary += (
-            f"\n\n> ℹ️ **Kaynak:** Eğitim test split'i (`faces_split/test/`) — "
+            f"\n\n> ℹ️ **Kaynak:** Eğitim test split'i (`faces_split_v2/test/`) — "
             f"{len(labels)} görsel (random sample, seed=42)"
         )
         return roc_fig, cm_fig, summary
@@ -1112,7 +1112,7 @@ def handle_cross_validation(n_folds=5, max_per_class=100):
 
         predictor = get_predictor()
         test_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                "dataset", "faces_split", "test")
+                                "dataset", "faces_split_v2", "test")
 
         if not os.path.exists(test_dir):
             return None, "> ⚠️ Test split bulunamadı."
@@ -1433,7 +1433,7 @@ def _build_dataset_md():
     from config import paths
 
     base = paths.BASE_DIR / "dataset"
-    splits_dir = base / "faces_split"
+    splits_dir = base / "faces_split_v2"
     jury_dir = base / "jury_test"
 
     def count_images(d):
@@ -1474,4 +1474,403 @@ def _build_dataset_md():
     )
     return md
 
+
+# ================================================================
+# CROSS-DATASET BENCHMARK HANDLER
+# ================================================================
+
+def handle_cross_dataset_benchmark(max_samples=200):
+    """
+    Tum harici veri setleri uzerinden cross-dataset benchmark testi.
+
+    Returns:
+        (progress_md, table_md, radar_fig, roc_fig, summary_md)
+    """
+    try:
+        from evaluation.cross_dataset_benchmark import CrossDatasetBenchmark
+
+        bench = CrossDatasetBenchmark()
+
+        # Oncelik: datasetleri kesfet
+        datasets = bench.discover_datasets()
+        if not datasets:
+            empty_msg = "> ⚠️ Harici veri seti bulunamadı. `dataset/external_tests/` altına `real/` + `fake/` klasörleri ekleyin."
+            return empty_msg, empty_msg, None, None, empty_msg
+
+        # Dataset listesi goster
+        ds_list = "### 🔍 Keşfedilen Veri Setleri\n\n"
+        ds_list += "| # | Dataset | REAL | FAKE | Toplam |\n|---|---------|------|------|--------|\n"
+        for i, ds in enumerate(datasets, 1):
+            total = ds["real_count"] + ds["fake_count"]
+            ds_list += f"| {i} | {ds['icon']} {ds['label']} | {ds['real_count']:,} | {ds['fake_count']:,} | {total:,} |\n"
+
+        # Benchmark calistir
+        max_samples = int(max_samples)
+        results = bench.run_full_benchmark(max_samples=max_samples)
+
+        if "_error" in results:
+            err = f"> ⚠️ {results['_error']}"
+            return err, err, None, None, err
+
+        # Sonuclari uret
+        table_md = bench.generate_comparison_table(results)
+        radar_fig = bench.generate_radar_chart(results)
+        roc_fig = bench.generate_roc_overlay(results)
+        summary_md = bench.generate_summary_report(results)
+
+        # Ilerleme bilgisi
+        meta = results.get("_meta", {})
+        elapsed = meta.get("total_time", 0)
+        progress_md = (
+            f"### ✅ Benchmark Tamamlandı\n\n"
+            f"**{len(datasets)} veri seti** test edildi | "
+            f"Sınıf başına max **{max_samples}** örnek | "
+            f"Süre: **{elapsed:.0f}s**\n\n"
+            + ds_list
+        )
+
+        return progress_md, table_md, radar_fig, roc_fig, summary_md
+
+    except Exception as e:
+        import traceback
+        err = f"Benchmark hatası: {e}\n```\n{traceback.format_exc()}\n```"
+        return err, err, None, None, err
+
+
+# ================================================================
+# DOMAIN FINE-TUNE HANDLER'LARI
+# ================================================================
+
+def handle_domain_ft_discover():
+    """Kullanilabilir harici veri setlerini kesfet ve CheckboxGroup icin dondur."""
+    try:
+        from core.domain_finetune import discover_available_datasets
+        datasets = discover_available_datasets()
+        if not datasets:
+            return [], "> ⚠️ Harici veri seti bulunamadı."
+
+        choices = []
+        info_rows = ["| Dataset | REAL | FAKE | Dengeli |", "|---------|------|------|---------|"]
+        for ds in datasets:
+            label = f"{ds['icon']} {ds['label']}"
+            choices.append(label)
+            info_rows.append(
+                f"| {label} | {ds['real_count']:,} | {ds['fake_count']:,} | {ds['balanced']:,}/sınıf |"
+            )
+
+        info_md = "### 🔍 Kullanılabilir Veri Setleri\n\n" + "\n".join(info_rows)
+        return choices, info_md
+    except Exception as e:
+        return [], f"Hata: {e}"
+
+
+def _resolve_dataset_names(selected_labels: list) -> list:
+    """UI label'larini dataset isimlerine cevir."""
+    from core.domain_finetune import KNOWN_DATASETS
+    # Label → name mapping
+    label_to_name = {}
+    for name, meta in KNOWN_DATASETS.items():
+        label_to_name[f"{meta['icon']} {meta['label']}"] = name
+    # Bilinmeyen label'lar icin direkt kullan
+    result = []
+    for label in selected_labels:
+        if label in label_to_name:
+            result.append(label_to_name[label])
+        else:
+            # Icon + label formatindan name cikarmaya calis
+            clean = label.strip()
+            for name, meta in KNOWN_DATASETS.items():
+                if meta["label"] in clean:
+                    result.append(name)
+                    break
+    return result
+
+
+def handle_domain_ft_start(selected_datasets, epochs, lr):
+    """Domain fine-tune baslat."""
+    if not selected_datasets:
+        return "⚠️ En az bir veri seti seçin."
+
+    try:
+        from core.domain_finetune import start_domain_finetune
+        model = lazy_predictor().model
+        dataset_names = _resolve_dataset_names(selected_datasets)
+
+        if not dataset_names:
+            return "⚠️ Seçilen veri setleri çözümlenemedi."
+
+        result = start_domain_finetune(
+            model=model,
+            dataset_names=dataset_names,
+            epochs=int(epochs),
+            lr=float(lr),
+            batch_size=8,
+        )
+        return result
+    except Exception as e:
+        return f"❌ Hata: {e}"
+
+
+def handle_domain_ft_status():
+    """Domain fine-tune durumunu sorgula."""
+    try:
+        from core.domain_finetune import get_domain_ft_status, get_domain_ft_log
+
+        status = get_domain_ft_status()
+        log_md = get_domain_ft_log()
+
+        if status["error"]:
+            return f"❌ **Hata:**\n```\n{status['error']}\n```\n\n{log_md}"
+
+        if status["running"]:
+            return (
+                f"### ⏳ Fine-Tune Devam Ediyor...\n\n"
+                f"**Faz:** {status['phase']} | "
+                f"**Epoch:** {status['epoch']}/{status['total_epochs']} | "
+                f"**Loss:** {status['train_loss']} | "
+                f"**Val AUC:** {status['val_auc']} | "
+                f"**Best AUC:** {status['best_auc']}\n\n"
+                f"#### Log\n{log_md}"
+            )
+
+        if status["completed"]:
+            return (
+                f"### ✅ Fine-Tune Tamamlandı!\n\n"
+                f"**Best Val AUC:** {status['best_auc']}\n\n"
+                f"#### Log\n{log_md}"
+            )
+
+        return "_Henüz fine-tune başlatılmadı._"
+    except Exception as e:
+        return f"Hata: {e}"
+
+
+def handle_domain_ft_rollback():
+    """Domain fine-tuned modeli geri al."""
+    try:
+        from core.domain_finetune import rollback_domain_finetune
+        model = lazy_predictor().model
+        return rollback_domain_finetune(model)
+    except Exception as e:
+        return f"❌ Rollback hatası: {e}"
+
+
+# ================================================================
+# MODEL SEÇİCİ
+# ================================================================
+def handle_model_switch(model_choice):
+    """Model değiştir: Orijinal veya Generalized."""
+    pred = lazy_predictor()
+    if "Generalized" in model_choice or "generalized" in model_choice:
+        result = pred.switch_model("generalized")
+    else:
+        result = pred.switch_model("original")
+    return result
+
+
+# ================================================================
+# JÜRI GALERİSİ — jury_demo_v2 görsellerini göster
+# ================================================================
+def handle_jury_gallery():
+    """Jüri demo v2 galeri yükle — real/fake görselleri."""
+    from config import paths
+    from pathlib import Path
+
+    jury_dir = paths.DATASET_DIR / "jury_demo_v2"
+    real_dir = jury_dir / "real"
+    fake_dir = jury_dir / "fake"
+
+    gallery_images = []
+    stats = {"real": 0, "fake": 0}
+
+    # Real görseller
+    if real_dir.exists():
+        real_files = sorted(real_dir.glob("*.jpg")) + sorted(real_dir.glob("*.png"))
+        stats["real"] = len(real_files)
+        for f in real_files:
+            gallery_images.append((str(f), f"✅ REAL — {f.stem}"))
+
+    # Fake görseller
+    if fake_dir.exists():
+        fake_files = sorted(fake_dir.glob("*.jpg")) + sorted(fake_dir.glob("*.png"))
+        stats["fake"] = len(fake_files)
+        for f in fake_files:
+            gallery_images.append((str(f), f"🚨 FAKE — {f.stem}"))
+
+    info = (
+        f"### 📊 Jüri Demo V2 İstatistikleri\n\n"
+        f"| Sınıf | Adet |\n|-------|------|\n"
+        f"| ✅ Real | {stats['real']} |\n"
+        f"| 🚨 Fake | {stats['fake']} |\n"
+        f"| **Toplam** | **{stats['real'] + stats['fake']}** |\n"
+    )
+
+    return gallery_images, info
+
+
+def handle_jury_single_analysis(img):
+    """Galeriden seçilen görseli analiz et."""
+    if img is None:
+        return "Bir görsel seçin"
+    pred = lazy_predictor()
+    try:
+        result = pred.predict(img, source_hint="jury_gallery")
+        label = result.get("label", "?")
+        fake_p = result.get("fake_prob", 0)
+        real_p = result.get("real_prob", 0)
+        conf = result.get("confidence", 0)
+
+        if label == "FAKE":
+            verdict = f'<div class="verdict-fake">🚨 SAHTE — %{fake_p*100:.1f} güvenle</div>'
+        elif label == "REAL":
+            verdict = f'<div class="verdict-real">✅ GERÇEK — %{real_p*100:.1f} güvenle</div>'
+        else:
+            verdict = f"**{label}** (conf={conf:.3f})"
+
+        detail = (
+            f"{verdict}\n\n"
+            f"| Metrik | Değer |\n|--------|-------|\n"
+            f"| Real Prob | {real_p:.4f} |\n"
+            f"| Fake Prob | {fake_p:.4f} |\n"
+            f"| Confidence | {conf:.4f} |\n"
+            f"| Model | {pred.current_model_type} |\n"
+        )
+
+        if result.get("fake_subtype"):
+            detail += f"| Alt-Tip | {result['fake_subtype']} ({result.get('subtype_confidence', 0):.2f}) |\n"
+
+        return detail
+    except Exception as e:
+        return f"❌ Analiz hatası: {e}"
+
+
+def handle_jury_batch_test():
+    """Tüm jüri demo v2 görsellerini batch test et."""
+    from config import paths
+    from pathlib import Path
+    import time
+
+    pred = lazy_predictor()
+    jury_dir = paths.DATASET_DIR / "jury_demo_v2"
+
+    results = {"real_correct": 0, "real_total": 0, "fake_correct": 0, "fake_total": 0,
+               "real_avg_conf": [], "fake_avg_conf": [],
+               "real_as_fake": 0, "fake_as_real": 0}
+
+    start_time = time.time()
+
+    for cls, expected in [("real", "REAL"), ("fake", "FAKE")]:
+        cls_dir = jury_dir / cls
+        if not cls_dir.exists():
+            continue
+        files = sorted(cls_dir.glob("*.jpg")) + sorted(cls_dir.glob("*.png"))
+        for f in files:
+            try:
+                r = pred.predict(str(f))
+                results[f"{cls}_total"] += 1
+                if r["label"] == expected:
+                    results[f"{cls}_correct"] += 1
+                else:
+                    # Yanlış sınıflandırmalar
+                    if cls == "real":
+                        results["real_as_fake"] += 1
+                    else:
+                        results["fake_as_real"] += 1
+                results[f"{cls}_avg_conf"].append(r.get("confidence", 0))
+            except Exception:
+                results[f"{cls}_total"] += 1
+
+    elapsed = time.time() - start_time
+
+    r_acc = results['real_correct'] / max(results['real_total'], 1) * 100
+    f_acc = results['fake_correct'] / max(results['fake_total'], 1) * 100
+    total_correct = results['real_correct'] + results['fake_correct']
+    total = results['real_total'] + results['fake_total']
+    overall = total_correct / max(total, 1) * 100
+    r_conf = sum(results['real_avg_conf']) / max(len(results['real_avg_conf']), 1)
+    f_conf = sum(results['fake_avg_conf']) / max(len(results['fake_avg_conf']), 1)
+
+    # Confusion matrix degerleri
+    tp = results['fake_correct']    # True Positive (Fake doğru tespit)
+    tn = results['real_correct']    # True Negative (Real doğru tespit)
+    fp = results['real_as_fake']    # False Positive (Real yanlış fake)
+    fn = results['fake_as_real']    # False Negative (Fake yanlış real)
+
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+
+    report = (
+        f"### 🏆 Jüri Demo V2 — Batch Test Sonuçları\n\n"
+        f"**Model:** {pred.current_model_type} (`{Path(pred.current_model_path).name}`)\n\n"
+        f"| Sınıf | Doğru | Toplam | Accuracy | Ort. Confidence |\n"
+        f"|-------|-------|--------|----------|----------------|\n"
+        f"| ✅ Real | {results['real_correct']} | {results['real_total']} | **%{r_acc:.1f}** | {r_conf:.3f} |\n"
+        f"| 🚨 Fake | {results['fake_correct']} | {results['fake_total']} | **%{f_acc:.1f}** | {f_conf:.3f} |\n"
+        f"| **Toplam** | **{total_correct}** | **{total}** | **%{overall:.1f}** | — |\n\n"
+        f"| Metrik | Değer |\n|--------|-------|\n"
+        f"| Precision | {precision:.4f} |\n"
+        f"| Recall | {recall:.4f} |\n"
+        f"| F1-Score | {f1:.4f} |\n\n"
+        f"⏱️ Süre: {elapsed:.1f}s | 🖼️ {total} görsel\n"
+    )
+
+    acc_fig = None
+    cm_fig = None
+
+    if HAS_PLOTLY:
+        # Accuracy bar chart
+        acc_fig = go.Figure(data=[
+            go.Bar(name="Accuracy", x=["Real Accuracy", "Fake Accuracy", "Overall"],
+                   y=[r_acc, f_acc, overall],
+                   marker_color=["#22C55E", "#EF4444", "#06B6D4"],
+                   text=[f"%{r_acc:.1f}", f"%{f_acc:.1f}", f"%{overall:.1f}"],
+                   textposition="outside")
+        ])
+        acc_fig.update_layout(
+            **PLOT_LAYOUT,
+            title="Jüri Demo V2 — Accuracy",
+            height=350,
+            yaxis=dict(range=[0, 110], gridcolor="#1e293b"),
+            showlegend=False,
+        )
+
+        # Confusion Matrix heatmap
+        cm_values = [[tn, fp], [fn, tp]]
+        cm_labels = [[f"TN\n{tn}", f"FP\n{fp}"],
+                     [f"FN\n{fn}", f"TP\n{tp}"]]
+
+        cm_fig = go.Figure(data=go.Heatmap(
+            z=cm_values,
+            x=["Predicted REAL", "Predicted FAKE"],
+            y=["Actual REAL", "Actual FAKE"],
+            text=cm_labels,
+            texttemplate="%{text}",
+            textfont=dict(size=16, color="white"),
+            colorscale=[
+                [0, "#0f172a"],
+                [0.5, "#1e40af"],
+                [1.0, "#06B6D4"],
+            ],
+            showscale=False,
+            hovertemplate="Actual: %{y}<br>Predicted: %{x}<br>Count: %{z}<extra></extra>",
+        ))
+        cm_fig.update_layout(
+            **PLOT_LAYOUT,
+            title="Confusion Matrix",
+            height=350,
+            xaxis=dict(
+                title="Tahmin (Predicted)",
+                title_font=dict(color="#94A3B8"),
+                tickfont=dict(color="#94A3B8"),
+            ),
+            yaxis=dict(
+                title="Gerçek (Actual)",
+                title_font=dict(color="#94A3B8"),
+                tickfont=dict(color="#94A3B8"),
+                autorange="reversed",
+            ),
+        )
+
+    return report, acc_fig, cm_fig
 

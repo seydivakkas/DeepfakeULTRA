@@ -90,8 +90,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Varsayılan kaynaklar
-    source = args.source or str(Path("dataset/faces_split/train/REAL"))
-    output = args.output or str(Path("dataset/faces_split/train/FAKE/sbi_generated"))
+    source = args.source or str(Path("dataset/faces_split_v2/train/REAL"))
+    output = args.output or str(Path("dataset/faces_split_v2/train/FAKE/sbi_generated"))
     
     generated = generate_sbi_fakes(source, output, count=args.count)
     

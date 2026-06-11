@@ -1,4 +1,17 @@
-# Run #3 Ana Yapılandırma — DeepFake Detection System
+# ═══════════════════════════════════════════════════════════════════
+# ⚠️  DEPRECATED — BU DOSYA ARTIK KULLANILMIYOR
+# ═══════════════════════════════════════════════════════════════════
+# Bu YAML, Run #3 dönemine ait tarihsel bir belgedir.
+# Aktif konfigürasyon: config.py (tek kaynak of truth)
+#
+# ÖNEMLİ UYUMSUZLUKLAR:
+#   - Bu dosya: num_classes=3, kd_alpha=0.5, num_workers=12
+#   - config.py: NUM_CLASSES=2, KD_ALPHA=0.0, NUM_WORKERS=4
+#
+# Yeni ayarlar için config.py'yi düzenleyin.
+# ═══════════════════════════════════════════════════════════════════
+#
+# [ARŞİV] Run #3 Ana Yapılandırma — DeepFake Detection System
 # Veri Seti Artırımı & Eğitim İyileştirme
 
 # Eğitim Genel
@@ -78,7 +91,7 @@ optimization:
   mixed_precision: true            # FP16 AMP
   gradient_checkpointing: true     # Backbone için
   pin_memory: true
-  num_workers: 6
+  num_workers: 12
   dynamic_batch_scaling: true      # OOM anında batch yarıya
 
 # Model Mimarisi

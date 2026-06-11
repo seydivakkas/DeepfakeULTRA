@@ -53,8 +53,8 @@ def run_script(script_path: str, args: list = None, check: bool = True) -> bool:
 
 def check_dataset_exists() -> bool:
     """Train/val split mevcut mu?"""
-    train_real = PROJECT_ROOT / "dataset" / "faces_split" / "train" / "real"
-    train_fake = PROJECT_ROOT / "dataset" / "faces_split" / "train" / "fake"
+    train_real = PROJECT_ROOT / "dataset" / "faces_split_v2" / "train" / "real"
+    train_fake = PROJECT_ROOT / "dataset" / "faces_split_v2" / "train" / "fake"
     return train_real.exists() and train_fake.exists()
 
 
@@ -76,7 +76,7 @@ def print_dataset_summary():
     total = 0
     for split in splits:
         for label in ["real", "fake"]:
-            d = base / "faces_split" / split / label
+            d = base / "faces_split_v2" / split / label
             n = count_images(d)
             total += n
             print(f"     {split}/{label}: {n:,} görsel")
@@ -114,7 +114,7 @@ def phase_data_prep():
     header(4, "Leakage Kontrolü (pHash + MD5)", "🔐")
     run_script(
         "scripts/leakage_checker.py",
-        args=["--check", "dataset/faces_split/train", "dataset/jury_test",
+        args=["--check", "dataset/faces_split_v2/train", "dataset/jury_test",
               "--no-embedding"],   # Hızlı mod: FaceNet embedding atla
         check=False,  # Leakage varsa uyar ama durma
     )

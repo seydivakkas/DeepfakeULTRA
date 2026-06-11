@@ -23,6 +23,12 @@ from torchvision import models
 from config import model_cfg, DEVICE
 import math
 
+try:
+    import timm
+    HAS_TIMM = True
+except ImportError:
+    HAS_TIMM = False
+
 
 # ═══════════════════════════════════════════════════════════
 # FACE MESH MLP — 468 Landmark İşleme
@@ -151,17 +157,24 @@ class DualPathDeepfakeDetector(nn.Module):
 
     Üç branch (RGB, Frekans, Face Mesh) → CrossBranchTransformer →
     Classifier.
+
+    RGB backbone config'den secilebilir:
+        model_cfg.RGB_BACKBONE_TYPE = "mobilenet_v3_large"  (mevcut, hafif)
+        model_cfg.RGB_BACKBONE_TYPE = "efficientnet_b4"     (guclu, DFDC kanitli)
     """
 
     def __init__(self, num_classes: int = model_cfg.NUM_CLASSES):
         super().__init__()
         self.num_classes = num_classes
+        self.backbone_type = getattr(model_cfg, "RGB_BACKBONE_TYPE", "mobilenet_v3_large")
 
-        # ── RGB Branch: MobileNetV3-Large (pretrained) ──
-        rgb_backbone = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
-        self.rgb_features = rgb_backbone.features
-        self.rgb_pool = nn.AdaptiveAvgPool2d(1)
-        rgb_out_dim = 960  # MobileNetV3-Large son katman
+        # ── RGB Branch: Config-driven backbone secimi ──
+        fusion_dim = model_cfg.FUSION_DIM  # 960
+
+        if self.backbone_type == "efficientnet_b4":
+            self._init_efficientnet_rgb(fusion_dim)
+        else:
+            self._init_mobilenet_rgb(fusion_dim)
 
         # ── Frekans Branch: MobileNetV3-Large (DWT 18-ch input) ──
         freq_backbone = models.mobilenet_v3_large(weights=None)
@@ -176,16 +189,12 @@ class DualPathDeepfakeDetector(nn.Module):
         )
         self.freq_features = freq_backbone.features
         self.freq_pool = nn.AdaptiveAvgPool2d(1)
-        freq_out_dim = 960
+        self.freq_proj = nn.Identity()  # Zaten 960
 
         # ── Mesh Branch: FaceMeshMLP ──
         self.mesh_mlp = FaceMeshMLP()
         mesh_out_dim = model_cfg.MESH_OUTPUT_DIM  # 128
 
-        # ── Branch boyutlarını hizala ──
-        fusion_dim = model_cfg.FUSION_DIM  # 960 (ortak boyut)
-        self.rgb_proj = nn.Identity()  # Zaten 960
-        self.freq_proj = nn.Identity()  # Zaten 960
         self.mesh_proj = nn.Sequential(
             nn.Linear(mesh_out_dim, fusion_dim),
             nn.ReLU(inplace=True),
@@ -211,10 +220,66 @@ class DualPathDeepfakeDetector(nn.Module):
         # Ağırlık başlatma
         self._init_weights()
 
+    # ── Backbone Init Metotlari ──
+    def _init_mobilenet_rgb(self, fusion_dim: int):
+        """MobileNetV3-Large RGB backbone (mevcut mimari)."""
+        rgb_backbone = models.mobilenet_v3_large(
+            weights=models.MobileNet_V3_Large_Weights.DEFAULT
+        )
+        self.rgb_features = rgb_backbone.features
+        self.rgb_pool = nn.AdaptiveAvgPool2d(1)
+        self.rgb_proj = nn.Identity()  # Zaten 960-dim
+
+    def _init_efficientnet_rgb(self, fusion_dim: int):
+        """EfficientNet-B4 NoisyStudent RGB backbone (guclu mimari)."""
+        if not HAS_TIMM:
+            print("[UYARI] timm yuklu degil, MobileNetV3'e dusuyoruz")
+            self._init_mobilenet_rgb(fusion_dim)
+            return
+
+        self.rgb_backbone = timm.create_model(
+            "tf_efficientnet_b4_ns",
+            pretrained=True,
+            num_classes=0,
+            global_pool="avg",
+        )
+        rgb_out_dim = self.rgb_backbone.num_features  # 1792
+        # 1792 → 960 projeksiyon
+        self.rgb_proj = nn.Sequential(
+            nn.Linear(rgb_out_dim, fusion_dim),
+            nn.BatchNorm1d(fusion_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+        )
+        # Baslangicta backbone'u dondur
+        for param in self.rgb_backbone.parameters():
+            param.requires_grad = False
+
+    def unfreeze_rgb_backbone(self, lr_factor: float = 0.1):
+        """EfficientNet backbone'unu ac (dusuk LR ile fine-tune)."""
+        if self.backbone_type == "efficientnet_b4" and hasattr(self, "rgb_backbone"):
+            for param in self.rgb_backbone.parameters():
+                param.requires_grad = True
+
+    def get_param_groups(self, base_lr: float) -> list:
+        """Katmansal LR icin parametre gruplari."""
+        if self.backbone_type == "efficientnet_b4" and hasattr(self, "rgb_backbone"):
+            backbone_params = list(self.rgb_backbone.parameters())
+            other_params = [
+                p for n, p in self.named_parameters()
+                if not n.startswith("rgb_backbone") and p.requires_grad
+            ]
+            return [
+                {"params": backbone_params, "lr": base_lr * model_cfg.BACKBONE_LR_FACTOR},
+                {"params": other_params, "lr": base_lr},
+            ]
+        return [{"params": self.parameters(), "lr": base_lr}]
+
     def _init_weights(self):
         """Xavier/He ağırlık başlatma (pretrained dışındaki katmanlar)."""
+        skip_prefixes = ("rgb_features", "freq_features", "rgb_backbone")
         for name, module in self.named_modules():
-            if "rgb_features" in name or "freq_features" in name:
+            if any(name.startswith(p) for p in skip_prefixes):
                 continue
             if isinstance(module, nn.Linear):
                 nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
@@ -234,14 +299,20 @@ class DualPathDeepfakeDetector(nn.Module):
         Her branch'ten özellik vektörü çıkar.
         Returns: rgb_feat, freq_feat, mesh_feat — her biri (batch, fusion_dim)
         """
-        rgb_feat = self.rgb_features(rgb)
-        rgb_feat = self.rgb_pool(rgb_feat).flatten(1)
+        # RGB: backbone tipine gore dallan
+        if self.backbone_type == "efficientnet_b4" and hasattr(self, "rgb_backbone"):
+            rgb_feat = self.rgb_backbone(rgb)  # (batch, 1792)
+        else:
+            rgb_feat = self.rgb_features(rgb)
+            rgb_feat = self.rgb_pool(rgb_feat).flatten(1)  # (batch, 960)
         rgb_feat = self.rgb_proj(rgb_feat)
 
+        # Freq: her zaman MobileNetV3
         freq_feat = self.freq_features(freq)
         freq_feat = self.freq_pool(freq_feat).flatten(1)
         freq_feat = self.freq_proj(freq_feat)
 
+        # Mesh: FaceMeshMLP
         mesh_feat = self.mesh_mlp(mesh)
         mesh_feat = self.mesh_proj(mesh_feat)
 

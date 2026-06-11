@@ -115,7 +115,7 @@ if __name__ == "__main__":
     model = load_model(model_path)
     
     # 1. Validation setinden optimal threshold bul
-    val_dir = Path("dataset/faces_split/val")
+    val_dir = Path("dataset/faces_split_v2/val")
     print(f"\n=== Validation setinden threshold hesaplama ===")
     print(f"Dizin: {val_dir}")
     
