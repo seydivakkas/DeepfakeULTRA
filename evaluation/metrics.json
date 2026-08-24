@@ -12,24 +12,12 @@
   "macro_f1_optimal": 0.9444,
   "macro_f1_fixed_05": 0.9441,
   "confusion_matrix_optimal": [
-    [
-      17407,
-      1062
-    ],
-    [
-      992,
-      17477
-    ]
+    [17407, 1062],
+    [992, 17477]
   ],
   "confusion_matrix_fixed_05": [
-    [
-      17461,
-      1008
-    ],
-    [
-      1057,
-      17412
-    ]
+    [17461, 1008],
+    [1057, 17412]
   ],
   "per_source": {
     "test": {
@@ -58,7 +46,7 @@
   "fp_total": 1062,
   "fn_total": 992,
   "brier_score": 0.1344,
-  "reliability_diagram": "C:\\Users\\seydieryilmaz\\Desktop\\DeepfakeULTRA\\evaluation\\reliability_diagram.png",
+  "reliability_diagram": "evaluation/reliability_diagram.png",
   "calibration_method": "platt_scaling",
   "calibrated_ece": 0.0414,
   "calibrated_brier": 0.0459,
@@ -66,7 +54,7 @@
   "calibration_b": -0.03799562528729439,
   "onnx_export": {
     "success": true,
-    "path": "C:\\Users\\seydieryilmaz\\Desktop\\DeepfakeULTRA\\models\\model.onnx",
+    "path": "models/model.onnx",
     "opset_version": 17,
     "file_size_mb": 1.93
   }
