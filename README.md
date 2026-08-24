@@ -7,13 +7,12 @@
 ![Python](https://img.shields.io/badge/Python-3.x-3776AB?style=flat-square&logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)
 ![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900?style=flat-square&logo=nvidia&logoColor=white)
-![Val AUC](https://img.shields.io/badge/Val%20AUC-0.9839-2EA44F?style=flat-square)
-![Cross Dataset](https://img.shields.io/badge/Cross--Dataset%20AUC-0.7527-0A66C2?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square)
+[![CI](https://github.com/seydivakkas/DeepfakeULTRA/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/seydivakkas/DeepfakeULTRA/actions/workflows/ci.yml)
+![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-red?style=flat-square)
 
 **A forensic deepfake detection system that fuses spatial appearance, frequency-domain evidence and facial geometry, then evaluates the model beyond its training distribution.**
 
-**0.9839 validation AUC** · **0.7527 mean cross-dataset AUC** · **5 external datasets** · **~200 ms GPU inference** · **~15M parameters**
+**0.9820 internal ROC-AUC** · **0.7405 mean external ROC-AUC** · **5 external datasets** · **artifact-backed evaluation**
 
 `Deepfake Detection` · `Computer Vision` · `XAI` · `Domain Generalization` · `Frequency Analysis` · `Transformers`
 
@@ -30,6 +29,22 @@ DeepfakeULTRA is built around a stricter question:
 > **Can multiple forensic evidence streams improve detection while making failure modes, domain shift and model uncertainty inspectable?**
 
 The project therefore treats cross-dataset evaluation and failure analysis as first-class engineering requirements rather than optional benchmark additions.
+
+---
+
+## Minimum reproducible run
+
+```bash
+git clone https://github.com/seydivakkas/DeepfakeULTRA.git
+cd DeepfakeULTRA
+python -m venv .venv
+# activate .venv for your shell
+pip install -r requirements.txt
+python main.py --test-random
+python app.py
+```
+
+Model weights and large datasets are intentionally not assumed to be present in a fresh clone. Full model-backed inference requires the documented model artifacts; the smoke path above validates the software surface first.
 
 ---
 
@@ -53,28 +68,28 @@ The frequency branch combines multiple wavelet families, DCT bands and phase inf
 
 ---
 
-## Evaluation snapshot
+## Artifact-backed evaluation snapshot
 
-| Evaluation | Result |
+The values below are taken from the machine-readable files currently committed under `evaluation/`.
+
+| Evaluation | ROC-AUC |
 |---|---:|
-| Internal ROC-AUC | **0.9839** |
-| Internal accuracy | **93.1%** |
-| Internal F1 | **0.931** |
-| Mean external AUC | **0.7527** |
-| External datasets | **5** |
-| Approx. GPU inference | **~200 ms / image** |
+| Internal evaluation | **0.9820** |
+| Deepfake20K | **0.9617** |
+| DFDC | **0.8057** |
+| DeepfakeFace | **0.7614** |
+| Celeb-DF v2 | **0.6670** |
+| FaceForensics++ | **0.5068** |
+| External mean | **0.7405** |
 
-### Cross-dataset results
+The FaceForensics++ result is intentionally visible: the current repository artifacts show a near-random failure on this domain. Historical experiment values may appear in legacy technical documentation; for the current portfolio summary, machine-readable evaluation artifacts are authoritative.
 
-| Dataset | Final AUC |
-|---|---:|
-| Deepfake20K | **0.956** |
-| DFDC | **0.821** |
-| DeepfakeFace | **0.777** |
-| CelebDF v2 | **0.708** |
-| FaceForensics++ | **0.500** |
+### Evidence
 
-The FaceForensics++ result is intentionally visible here: the project documents **where the current system does not generalize**, rather than hiding a random-level failure behind an average score.
+- [Evidence index](docs/evidence/README.md)
+- [Internal metrics](evaluation/metrics.json)
+- [External evaluation folders](evaluation/external/)
+- [Known limitations](KNOWN_LIMITATIONS.md)
 
 ---
 
@@ -108,24 +123,24 @@ Internal Validation
         +
 External Benchmark Suite
     ↓
-Combined Model Selection
+Evidence-Aware Model Selection
 ```
 
-Model selection considers both internal validation performance and external-domain performance, reducing the incentive to optimize only for the familiar validation distribution.
+Model selection is intended to consider both familiar validation performance and external-domain behavior, reducing the incentive to optimize only for the training distribution.
 
 ---
 
 ## Product surfaces
 
-- **Single-image forensic analysis**
-- **Robustness testing**
-- **Analytics dashboard**
-- **Model evaluation / profiling**
-- **Persistent analysis history**
-- **Craniofacial analysis module**
-- **LLM-assisted result interpretation**
-- **FastAPI inference layer**
-- **Gradio interface**
+- Single-image forensic analysis
+- Robustness testing
+- Analytics dashboard
+- Model evaluation / profiling
+- Persistent analysis history
+- Craniofacial analysis module
+- LLM-assisted result interpretation
+- FastAPI inference layer
+- Gradio interface
 
 ---
 
@@ -156,19 +171,15 @@ Model selection considers both internal validation performance and external-doma
 
 ---
 
-## Documentation
+## Research & documentation
 
-The root README is intentionally concise and research-portfolio oriented. The original full system documentation is preserved here:
+- [Architecture index](docs/architecture/README.md)
+- [Evidence index](docs/evidence/README.md)
+- [Known limitations](KNOWN_LIMITATIONS.md)
+- [Citation metadata](CITATION.cff)
+- [Full technical documentation](docs/README_FULL.md)
 
-### **[Full Technical Documentation →](docs/README_FULL.md)**
-
-The full document contains architecture details, training pipeline, benchmarks, UI walkthroughs, domain-generalization experiments, API usage, robustness tooling, limitations and roadmap.
-
----
-
-## Known limitation
-
-The current model performs at approximately random level on the documented FaceForensics++ reenactment benchmark (`AUC ≈ 0.50`). This remains an open failure mode and is part of the project roadmap rather than an omitted result.
+The repository is source-available under the terms in `LICENSE`; it is **not MIT-licensed**.
 
 ---
 
@@ -176,6 +187,6 @@ The current model performs at approximately random level on the documented FaceF
 
 **Detect · explain · stress-test · disclose failure modes**
 
-[GitHub Profile](https://github.com/seydivakkas) · [Full Documentation](docs/README_FULL.md)
+[GitHub Profile](https://github.com/seydivakkas) · [Evidence](docs/evidence/README.md) · [Limitations](KNOWN_LIMITATIONS.md)
 
 </div>
