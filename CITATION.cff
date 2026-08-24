@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use DeepfakeULTRA in academic or technical work, please cite this software repository."
+title: "DeepfakeULTRA: Reliability-Aware Multi-Evidence Deepfake Forensics"
+type: software
+authors:
+  - family-names: "Eryılmaz"
+    given-names: "Seydi Vakkas"
+repository-code: "https://github.com/seydivakkas/DeepfakeULTRA"
+url: "https://github.com/seydivakkas/DeepfakeULTRA"
+keywords:
+  - deepfake detection
+  - computer vision
+  - explainable AI
+  - domain generalization
+  - digital forensics
+  - frequency analysis
+license: "LicenseRef-Proprietary-All-Rights-Reserved"
