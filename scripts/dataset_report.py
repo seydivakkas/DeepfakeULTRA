@@ -1,15 +1,22 @@
 """DeepfakeULTRA V5 - Kapsamli Veri Seti Raporu."""
 import json
-from pathlib import Path
+import os
+import random
 from collections import defaultdict
+from pathlib import Path
 
-base = Path(r"c:\Users\seydieryilmaz\Desktop\DeepfakeULTRA\dataset\faces")
+from PIL import Image
+
+repo_root = Path(__file__).resolve().parents[1]
+base = Path(os.getenv("DEEPFAKE_DATASET_DIR", str(repo_root / "dataset" / "faces")))
 S = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
 
 def count_images(path):
     if not path.exists():
         return 0
     return sum(1 for f in path.rglob("*") if f.is_file() and f.suffix.lower() in S)
+
 
 print("=" * 65)
 print("  DEEPFAKE ULTRA V5 - VERI SETI RAPORU")
@@ -19,16 +26,16 @@ print("=" * 65)
 print("\n[1] KAYNAK ENVANTERI")
 print("-" * 65)
 sources = [
-    ("ffpp/real",           base / "ffpp" / "real",          "REAL"),
-    ("ffpp/fake",           base / "ffpp" / "fake",          "FAKE"),
-    ("celeba_hq/real",      base / "celeba_hq" / "real",     "REAL"),
-    ("ffhq_1024/real (ham)",base / "ffhq_1024" / "real",     "REAL"),
-    ("ffhq_1024_filtered",  base / "ffhq_1024_filtered" / "real", "REAL"),
-    ("utkface/real",        base / "utkface" / "real",       "REAL"),
-    ("vggface2/real",       base / "vggface2" / "real",      "REAL"),
-    ("sidset/real",         base / "sidset" / "real",        "REAL"),
-    ("sidset/fake",         base / "sidset" / "fake",        "FAKE"),
-    ("df40/fake (toplam)",  base / "df40" / "fake",          "FAKE"),
+    ("ffpp/real", base / "ffpp" / "real", "REAL"),
+    ("ffpp/fake", base / "ffpp" / "fake", "FAKE"),
+    ("celeba_hq/real", base / "celeba_hq" / "real", "REAL"),
+    ("ffhq_1024/real (ham)", base / "ffhq_1024" / "real", "REAL"),
+    ("ffhq_1024_filtered", base / "ffhq_1024_filtered" / "real", "REAL"),
+    ("utkface/real", base / "utkface" / "real", "REAL"),
+    ("vggface2/real", base / "vggface2" / "real", "REAL"),
+    ("sidset/real", base / "sidset" / "real", "REAL"),
+    ("sidset/fake", base / "sidset" / "fake", "FAKE"),
+    ("df40/fake (toplam)", base / "df40" / "fake", "FAKE"),
 ]
 tr = 0
 tf = 0
@@ -36,7 +43,7 @@ for name, p, tag in sources:
     c = count_images(p)
     if c > 0:
         print(f"  {name:25s}: {c:>9,} [{tag}]")
-        if "ham" not in name:  # ham FFHQ sayma, filtered zaten var
+        if "ham" not in name:
             if tag == "REAL":
                 tr += c
             else:
@@ -47,7 +54,7 @@ print(f"  {'FAKE TOPLAM':25s}: {tf:>9,}")
 print(f"  {'GENEL TOPLAM':25s}: {tr + tf:>9,}")
 
 # 2. SPLIT
-print(f"\n[2] EGITIM SPLIT (train/val/test)")
+print("\n[2] EGITIM SPLIT (train/val/test)")
 print("-" * 65)
 total_split = 0
 for split in ["train", "val", "test"]:
@@ -95,7 +102,7 @@ if report.exists():
         kept = res["kept"]
         print(f"  Kaynak: {res['source']}")
         print(f"  Islenen: {total + 12142:,} | Tutulan: {kept + 12142:,} ({(kept+12142)/(total+12142)*100:.1f}%)")
-        print(f"  Irk dagilimi:")
+        print("  Irk dagilimi:")
         for race, cnt in sorted(res["distribution"].items(), key=lambda x: -x[1]):
             pct = cnt / total * 100
             marker = " <-- HEDEF" if race in targets else ""
@@ -104,11 +111,8 @@ else:
     print("  Rapor bulunamadi")
 
 # 5. BOYUT DAGILIMI
-print(f"\n[5] COZUNURLUK DAGILIMI")
+print("\n[5] COZUNURLUK DAGILIMI")
 print("-" * 65)
-from PIL import Image
-import random
-
 sample_dirs = [
     base / "ffhq_1024_filtered" / "real",
     base / "ffpp" / "real",
@@ -133,19 +137,20 @@ for size, cnt in sorted(sizes.items(), key=lambda x: -x[1])[:10]:
     print(f"  {size:15s}: {cnt:>5} ornek")
 
 # 6. DISK KULLANIMI
-print(f"\n[6] DISK KULLANIMI")
+print("\n[6] DISK KULLANIMI")
 print("-" * 65)
 total_bytes = 0
 for f in base.rglob("*"):
     if f.is_file():
         total_bytes += f.stat().st_size
 print(f"  Toplam: {total_bytes / 1024**3:.1f} GB")
-for d in sorted(base.iterdir()):
-    if d.is_dir():
-        d_bytes = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
-        if d_bytes > 100 * 1024 * 1024:
-            print(f"    {d.name:25s}: {d_bytes / 1024**3:.1f} GB")
+if base.exists():
+    for d in sorted(base.iterdir()):
+        if d.is_dir():
+            d_bytes = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+            if d_bytes > 100 * 1024 * 1024:
+                print(f"    {d.name:25s}: {d_bytes / 1024**3:.1f} GB")
 
-print(f"\n{'='*65}")
+print(f"\n{'=' * 65}")
 print("  V5 VERI SETI EGETIME HAZIR")
-print(f"{'='*65}")
+print(f"{'=' * 65}")
