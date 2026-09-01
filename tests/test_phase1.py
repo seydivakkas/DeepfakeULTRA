@@ -2,14 +2,14 @@
 
 from pathlib import Path
 
-from config import DEVICE, VERSION, model_cfg, paths
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_config_load():
     """Validate the active configuration contract without pinning a stale release."""
+    from config import VERSION, model_cfg
+
     version_parts = VERSION.split(".")
     assert len(version_parts) == 3
     assert all(part.isdigit() for part in version_parts)
@@ -22,6 +22,8 @@ def test_config_load():
 
 def test_paths():
     """Ensure runtime output directories can be materialized."""
+    from config import paths
+
     paths.ensure_dirs()
     assert paths.MODEL_DIR.exists()
     assert paths.REPORTS_DIR.exists()
@@ -29,6 +31,8 @@ def test_paths():
 
 def test_device():
     """The runtime must select a supported Torch device."""
+    from config import DEVICE
+
     assert DEVICE.type in ("cpu", "cuda")
 
 
