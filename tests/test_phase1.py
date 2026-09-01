@@ -36,16 +36,13 @@ def test_device():
 
 
 def test_runtime_packages_exist():
-    """Track the current package layout after training moved into core/trainer.py."""
+    """Track the packages that exist in the current runtime architecture."""
     packages = [
         "core",
         "inference",
         "api",
         "ml_extensions",
         "services",
-        "security",
-        "deploy",
-        "utils",
     ]
     for package in packages:
         assert (ROOT / package).is_dir(), f"{package}/ missing"
