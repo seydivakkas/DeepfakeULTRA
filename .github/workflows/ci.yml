@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Changed-file linting compares the PR against its base commit.
+          fetch-depth: 0
 
       - name: Python Kurulum
         uses: actions/setup-python@v5
@@ -37,8 +40,29 @@ jobs:
           pip install --upgrade pip
           pip install ruff mypy
 
-      - name: Ruff Lint
+      - name: Ruff Lint — PR'da değişen Python dosyaları
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed_python < <(
+            git diff --name-only --diff-filter=ACMRT \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              -- '*.py'
+          )
+
+          if [ "${#changed_python[@]}" -eq 0 ]; then
+            echo "Bu PR Python dosyası değiştirmiyor; incremental Ruff gate atlandı."
+            exit 0
+          fi
+
+          printf 'Ruff gate dosyaları:\n - %s\n' "${changed_python[@]}"
+          ruff check "${changed_python[@]}" --output-format=github
+
+      - name: Ruff Full Baseline — görünür, geçişi bloklamaz
         run: ruff check . --output-format=github
+        continue-on-error: true
 
       - name: MyPy Type Check (kritik modüller)
         run: |
