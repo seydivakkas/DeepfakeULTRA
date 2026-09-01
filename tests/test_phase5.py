@@ -2,8 +2,6 @@
 
 import numpy as np
 
-from config import model_cfg
-
 
 def _dummy_image(size=224):
     return np.random.randint(0, 255, (size, size, 3), dtype=np.uint8)
@@ -19,6 +17,7 @@ def test_inference_pipeline():
 
 
 def test_preprocess_shapes():
+    from config import model_cfg
     from inference.predictor import DeepfakePredictor
 
     predictor = DeepfakePredictor()
@@ -31,6 +30,7 @@ def test_preprocess_shapes():
 
 
 def test_gradcam():
+    from config import model_cfg
     from inference.predictor import DeepfakePredictor
     from inference.xai_module import GradCAMPlusPlus
 
