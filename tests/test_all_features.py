@@ -45,7 +45,7 @@ def run_tests():
             importlib.import_module(module_name)
             print(f"  ✓ {module_name}")
             passed.append(module_name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - smoke test must report any import-time failure
             print(f"  ✗ {module_name}: {exc}")
             failed.append(module_name)
 
