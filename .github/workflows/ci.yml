@@ -99,7 +99,7 @@ jobs:
 
       - name: Unit Testleri Çalıştır
         run: |
-          pytest test_phase1.py test_phase4.py test_phase5.py test_fixes.py \
+          pytest tests/test_phase1.py tests/test_phase4.py tests/test_phase5.py \
                  --timeout=120 \
                  --tb=short \
                  -v \
@@ -142,7 +142,7 @@ jobs:
 
       - name: Smoke Test Çalıştır
         run: |
-          python test_all_features.py
+          python tests/test_all_features.py
         timeout-minutes: 10
 
   # ─────────────────────────────────────────────────────
