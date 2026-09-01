@@ -1,36 +1,50 @@
-"""Deepfake v3 — Faz 1 Test: Config & Altyapı."""
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+"""Phase 1 tests for current configuration and repository layout."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_config_load():
-    from config import model_cfg, paths, DEVICE, VERSION
-    assert VERSION == "3.0.0", f"Version mismatch: {VERSION}"
+    """Validate the active configuration contract without pinning a stale release."""
+    from config import VERSION, model_cfg
+
+    version_parts = VERSION.split(".")
+    assert len(version_parts) == 3
+    assert all(part.isdigit() for part in version_parts)
     assert model_cfg.IMG_SIZE == 224
     assert model_cfg.RGB_BACKBONE == "mobilenet_v3_large"
-    assert model_cfg.LSTM_BIDIRECTIONAL is True
-    print("  ✓ Config yükleme")
+    assert model_cfg.XBRANCH_HEADS == 4
+    assert model_cfg.XBRANCH_LAYERS == 2
+    assert model_cfg.USE_HYBRID_FREQ is True
+
 
 def test_paths():
+    """Ensure runtime output directories can be materialized."""
     from config import paths
+
     paths.ensure_dirs()
     assert paths.MODEL_DIR.exists()
     assert paths.REPORTS_DIR.exists()
-    print("  ✓ Path doğrulama")
+
 
 def test_device():
+    """The runtime must select a supported Torch device."""
     from config import DEVICE
+
     assert DEVICE.type in ("cpu", "cuda")
-    print(f"  ✓ Cihaz: {DEVICE}")
 
-def test_packages_exist():
-    pkgs = ["core", "inference", "api", "ml_extensions", "training", "services", "security", "deploy", "utils"]
-    for p in pkgs:
-        assert os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(__file__)), p)), f"{p}/ yok"
-    print(f"  ✓ {len(pkgs)} paket mevcut")
 
-if __name__ == "__main__":
-    print("=== Faz 1: Config & Altyapı ===")
-    for fn in [test_config_load, test_paths, test_device, test_packages_exist]:
-        try: fn()
-        except Exception as e: print(f"  ✗ {fn.__name__}: {e}"); sys.exit(1)
-    print("✅ Faz 1 tamamlandı")
+def test_runtime_packages_exist():
+    """Track the packages that exist in the current runtime architecture."""
+    packages = [
+        "core",
+        "inference",
+        "api",
+        "ml_extensions",
+        "services",
+    ]
+    for package in packages:
+        assert (ROOT / package).is_dir(), f"{package}/ missing"
+
+    assert (ROOT / "core" / "trainer.py").is_file(), "core/trainer.py missing"
