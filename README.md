@@ -20,6 +20,68 @@
 
 ---
 
+## Arayüz Galerisi — 10 Ekran
+
+**Bu görseller ile proje arasında görsel farklılıklar olabilir.**
+
+> Görseller proje tanıtımı için hazırlanmış örnek tasarımlardır. Gösterilen sınıflandırma sonuçları, güven skorları, eğitim ve benchmark bilgileri gerçek model çalıştırma çıktısı değildir. Doğrulanmış metrikler için `evaluation/` dosyalarına bakın.
+
+Güncel arayüzde **8 ana sekme** bulunur. Aşağıdaki 10 ekran, bu sekmelerle birlikte XAI ayrıntılarını ve Domain Fine-Tune görünümünü kapsar.
+
+| Sekme | Görseller |
+|---|---|
+| Single Image Analysis | 01 — Tek Görsel; 02 — XAI / Forensik detayları |
+| Robustness Test | 03 — Dayanıklılık testleri |
+| Analytics Dashboard | 04 — Analiz istatistikleri |
+| Model Profili | 05 — Model performansı; 06 — Domain Fine-Tune |
+| Analiz Geçmişi | 07 — Analiz geçmişi |
+| Yüz Anatomisi | 08 — Kraniyofasiyal analiz |
+| Jüri Galerisi | 09 — Jüri demosu |
+| Analiz Asistanı | 10 — Analiz asistanı |
+
+
+### 01 — Single Image Analysis
+
+![DeepfakeULTRA Single Image Analysis](docs/gorseller/arayuz/01_single_image_analysis.png)
+
+### 02 — XAI ve Forensik Kanıtlar
+
+![DeepfakeULTRA XAI ve Forensik Kanıtlar](docs/gorseller/arayuz/02_xai_forensic_details.png)
+
+### 03 — Robustness Test
+
+![DeepfakeULTRA Robustness Test](docs/gorseller/arayuz/03_robustness_test.png)
+
+### 04 — Analytics Dashboard
+
+![DeepfakeULTRA Analytics Dashboard](docs/gorseller/arayuz/04_analytics_dashboard.png)
+
+### 05 — Model Profili
+
+![DeepfakeULTRA Model Profili](docs/gorseller/arayuz/05_model_profile.png)
+
+### 06 — Domain Fine-Tune
+
+![DeepfakeULTRA Domain Fine-Tune](docs/gorseller/arayuz/06_domain_fine_tune.png)
+
+### 07 — Analiz Geçmişi
+
+![DeepfakeULTRA Analiz Geçmişi](docs/gorseller/arayuz/07_analysis_history.png)
+
+### 08 — Yüz Anatomisi
+
+![DeepfakeULTRA Yüz Anatomisi](docs/gorseller/arayuz/08_face_anatomy.png)
+
+### 09 — Jüri Galerisi
+
+![DeepfakeULTRA Jüri Galerisi](docs/gorseller/arayuz/09_jury_gallery.png)
+
+### 10 — Analiz Asistanı
+
+![DeepfakeULTRA Analiz Asistanı](docs/gorseller/arayuz/10_analysis_assistant.png)
+
+---
+
 ## Research question
 
 Deepfake detectors often look strong on an internal validation split and then degrade sharply when the manipulation method, compression pipeline or source domain changes.
@@ -127,68 +189,6 @@ Evidence-Aware Model Selection
 ```
 
 Model selection is intended to consider both familiar validation performance and external-domain behavior, reducing the incentive to optimize only for the training distribution.
-
----
-
-## Arayüz Galerisi — 10 Ekran
-
-**Bu görseller ile proje arasında görsel farklılıklar olabilir.**
-
-> Görseller proje tanıtımı için hazırlanmış örnek tasarımlardır. Gösterilen sınıflandırma sonuçları, güven skorları, eğitim ve benchmark bilgileri gerçek model çalıştırma çıktısı değildir. Doğrulanmış metrikler için `evaluation/` dosyalarına bakın.
-
-Güncel arayüzde **8 ana sekme** bulunur. Aşağıdaki 10 ekran, bu sekmelerle birlikte XAI ayrıntılarını ve Domain Fine-Tune görünümünü kapsar.
-
-| Sekme | Görseller |
-|---|---|
-| Single Image Analysis | 01 — Tek Görsel; 02 — XAI / Forensik detayları |
-| Robustness Test | 03 — Dayanıklılık testleri |
-| Analytics Dashboard | 04 — Analiz istatistikleri |
-| Model Profili | 05 — Model performansı; 06 — Domain Fine-Tune |
-| Analiz Geçmişi | 07 — Analiz geçmişi |
-| Yüz Anatomisi | 08 — Kraniyofasiyal analiz |
-| Jüri Galerisi | 09 — Jüri demosu |
-| Analiz Asistanı | 10 — Analiz asistanı |
-
-
-### 01 — Single Image Analysis
-
-![DeepfakeULTRA Single Image Analysis](docs/gorseller/arayuz/01_single_image_analysis.png)
-
-### 02 — XAI ve Forensik Kanıtlar
-
-![DeepfakeULTRA XAI ve Forensik Kanıtlar](docs/gorseller/arayuz/02_xai_forensic_details.png)
-
-### 03 — Robustness Test
-
-![DeepfakeULTRA Robustness Test](docs/gorseller/arayuz/03_robustness_test.png)
-
-### 04 — Analytics Dashboard
-
-![DeepfakeULTRA Analytics Dashboard](docs/gorseller/arayuz/04_analytics_dashboard.png)
-
-### 05 — Model Profili
-
-![DeepfakeULTRA Model Profili](docs/gorseller/arayuz/05_model_profile.png)
-
-### 06 — Domain Fine-Tune
-
-![DeepfakeULTRA Domain Fine-Tune](docs/gorseller/arayuz/06_domain_fine_tune.png)
-
-### 07 — Analiz Geçmişi
-
-![DeepfakeULTRA Analiz Geçmişi](docs/gorseller/arayuz/07_analysis_history.png)
-
-### 08 — Yüz Anatomisi
-
-![DeepfakeULTRA Yüz Anatomisi](docs/gorseller/arayuz/08_face_anatomy.png)
-
-### 09 — Jüri Galerisi
-
-![DeepfakeULTRA Jüri Galerisi](docs/gorseller/arayuz/09_jury_gallery.png)
-
-### 10 — Analiz Asistanı
-
-![DeepfakeULTRA Analiz Asistanı](docs/gorseller/arayuz/10_analysis_assistant.png)
 
 ---
 
