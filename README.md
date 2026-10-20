@@ -245,6 +245,48 @@ The repository is source-available under the terms in `LICENSE`; it is **not MIT
 
 ---
 
+## Lisans ve Kullanım Çerçevesi — Tüm Hakları Saklıdır
+
+**DeepfakeULTRA açık kaynak (open source) bir proje değildir.** Kaynak kodun GitHub'da erişilebilir olması; kodu indirme, çalıştırma, değiştirme, çoğaltma, yeniden yayımlama veya başka bir ürüne entegre etme izni verildiği anlamına gelmez. Proje, **yalnızca görüntüleme ve kişisel öğrenim amacıyla incelemeye** açılmıştır. Geçerli hükümler için [LICENSE](LICENSE) dosyasını okuyun.
+
+### İzin verilen inceleme kapsamı
+
+- Kodun ve mimari açıklamaların **GitHub üzerinde görüntülenmesi ve okunması**.
+- Kaynak kodu **kopyalamadan**, kişisel öğrenim amacıyla incelenmesi.
+- Mimari yaklaşımın ve kamuya açık bulguların kaynak gösterilerek akademik düzeyde **tartışılması**; bu, yazılımı kullanma veya çoğaltma izni vermez.
+
+### Kullanım ve yeniden dağıtım sınırları
+
+| İşlem veya kullanım senaryosu | Mevcut LICENSE kapsamında |
+|---|---|
+| GitHub üzerinden kodu okumak ve kişisel öğrenim için incelemek | **İzinli** |
+| Ticari ürün, ücretli/ücretsiz servis veya SaaS olarak çalıştırmak | **Yazılı izin olmadan yasak** |
+| Şirket içinde, müşteri işinde veya kurumsal prototipte kullanmak | **Yazılı izin olmadan yasak** |
+| Üniversite bitirme projesinde, tezde veya TÜBİTAK araştırma prototipinde kodu çalıştırmak ya da entegre etmek | **Yazılı izin olmadan yasak** |
+| Kaynak kodunu kopyalamak, çoğaltmak veya parça/parça başka projeye taşımak | **Yazılı izin olmadan yasak** |
+| Kodu değiştirmek, türev sürüm geliştirmek veya değişiklikleri yayımlamak | **Yazılı izin olmadan yasak** |
+| Kodu yeniden dağıtmak, yayımlamak, satmak, devretmek veya alt lisanslamak | **Yazılı izin olmadan yasak** |
+| Başka bir açık kaynak ya da kapalı kaynak ürüne kodu entegre etmek | **Yazılı izin olmadan yasak** |
+| Yeniden kullanım/dağıtım amacıyla fork oluşturmak | **LICENSE tarafından ayrıca yetkilendirilmemiştir; yazılı izin gerekir** |
+| Tersine mühendislik yapmak | **LICENSE kapsamında yasak** |
+
+**Ticari ve ticari olmayan ayrımı:** Mevcut lisans her iki tür projede de kullanımı sınırlar. Yazılımın ücretsiz sunulması, akademik amaç taşıması veya yalnızca şirket içinde çalıştırılması kendiliğinden izin sağlamaz.
+
+**Araştırma ve eğitim ayrımı:** Proje kodunu okuyarak öğrenmek ile kodu indirip çalıştırarak deney yapmak farklı işlemlerdir. Kaynak kodu çalıştıran, yeniden kullanan veya uyarlayan bir akademik çalışma için de yazarın açık yazılı izni gereklidir. Genel fikirlerin incelenmesi, korunan kodun veya varlıkların kopyalanması için izin yerine geçmez.
+
+**Kod örnekleri ve kurulum komutları:** Bu README'deki teknik çalıştırma komutları, yazarın kendi geliştirme ve yetkilendirilmiş doğrulama süreçlerini açıklamak içindir; ziyaretçilere ayrıca çalıştırma, kopyalama veya dağıtma lisansı vermez.
+
+### Yazılı izin ve lisans talepleri
+
+Ticari lisanslama, akademik deney, kurumsal kullanım, yeniden dağıtım, entegrasyon veya diğer özel izin talepleri için proje sahibiyle GitHub üzerinden iletişime geçin: **[@seydivakkas](https://github.com/seydivakkas)**.
+
+> **Temel kural:** Yazarın açık yazılı izni olmaksızın, [LICENSE](LICENSE) dosyasında tanımlanan görüntüleme ve kişisel öğrenme amaçlı inceleme kapsamının ötesinde bir kullanım hakkı verilmez.
+
+Bu bölüm mevcut lisansın açıklayıcı özetidir; **yeni bir lisans veya ek kullanım izni oluşturmaz**. Lisans metni ve uygulanabilir hukuk esas alınır. Bu açıklamalar hukuki danışmanlık değildir.
+
+---
+
+
 <div align="center">
 
 **Detect · explain · stress-test · disclose failure modes**
