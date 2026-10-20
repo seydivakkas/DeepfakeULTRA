@@ -130,6 +130,8 @@ Model selection is intended to consider both familiar validation performance and
 
 ---
 
+The requested file reference is not currently visible. Use files.search or files.list to rediscover the file, then retry with a returned ref_id or file_id.
+
 ## Product surfaces
 
 - Single-image forensic analysis
